@@ -4,8 +4,7 @@
   "module": "src/server/index.ts",
   "type": "module",
   "scripts": {
-    "build": "bun build.ts",
-    "publish": "bun publish.ts"
+    "build": "bun build.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",

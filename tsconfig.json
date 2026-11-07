@@ -13,6 +13,10 @@
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,
+    "paths": {
+      "@sharkord/plugin-sdk": ["./sdk/index.ts"],
+      "@sharkord/plugin-sdk/*": ["./sdk/*"]
+    },
 
     // Best practices
     "strict": true,
