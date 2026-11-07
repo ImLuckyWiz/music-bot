@@ -2,6 +2,7 @@ type PlayerQueueEntry = {
   position: number;
   label: string;
   invokerUserId: number;
+  isResolving?: boolean;
 };
 
 type PlayerStateSnapshot = {

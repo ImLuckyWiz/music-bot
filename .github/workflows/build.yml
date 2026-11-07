@@ -55,11 +55,11 @@ jobs:
           META="dist/${VERSION}.json"
 
           cat << 'EOF' > release_notes.md
-          ### Music Bot Fast Streaming & Autoplay Build
-          - **Instant playback**: Direct HTTP audio stream URL extraction without full-file pre-buffering.
-          - **Background queue prefetching**: Upcoming songs are resolved ahead of time for instantaneous transitions.
+          ### Music Bot Fast Streaming & Autoplay v${VERSION}
+          - **Instant Loading Feedback**: Immediate loading spinner and query feedback when starting playback from idle so you know it's actively fetching.
+          - **Queue Resolving State**: Enqueued tracks immediately display "Fetching song info..." with an animated spinner until metadata is resolved.
           - **YouTube Autoplay**: Automatically queues recommended tracks based on YouTube's algorithmic mix when your queue finishes.
-          - **Autoplay Toggle**: Easily toggle autoplay on or off directly from the music player topbar widget.
+          - **Autoplay Toggle**: Spotify-styled smooth switch toggle directly in the music player topbar widget.
           - **Built for Sharkord**: Unpacks to \`music-bot/\` containing \`manifest.json\`, \`client/index.js\`, and \`server/index.js\`.
           EOF
 
@@ -70,6 +70,6 @@ jobs:
           else
             echo "Creating new release $TAG..."
             gh release create "$TAG" "$ARCHIVE" "$META" \
-              --title "v${VERSION} - Fast Streaming & Zero Delay" \
+              --title "v${VERSION} - Loading Feedback & Autoplay" \
               --notes-file release_notes.md
           fi

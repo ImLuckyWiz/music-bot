@@ -28,7 +28,8 @@ const CSS = `
   transition: transform 0.1s ease, background 0.15s ease;
 }
 .mb-add:hover:not(:disabled) { background: #24e065; transform: scale(1.04); }
-.mb-add:disabled { opacity: 0.4; cursor: not-allowed; }
+.mb-add:disabled { opacity: 0.6; cursor: not-allowed; }
+.mb-btn-loading { display: inline-flex; align-items: center; gap: 6px; }
 
 .mb-hero {
   display: grid; grid-template-columns: 88px 1fr; gap: 14px;
@@ -40,18 +41,24 @@ const CSS = `
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 }
 .mb-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.mb-art-fallback { color: #6a6a6a; }
+.mb-art-fallback { color: #6a6a6a; display: grid; place-items: center; width: 100%; height: 100%; }
+.mb-art-loading { color: ${ACCENT}; background: #1a291e; }
 
 .mb-eyebrow {
   font-size: 10px; font-weight: 700; letter-spacing: 0.12em;
   text-transform: uppercase; color: ${ACCENT};
 }
 .mb-eyebrow-idle { color: #a7a7a7; }
+.mb-eyebrow-loading {
+  color: ${ACCENT}; display: inline-flex; align-items: center; gap: 6px;
+  animation: mb-pulse 1.4s ease-in-out infinite;
+}
 .mb-title {
   margin-top: 5px; font-size: 16px; font-weight: 700; line-height: 1.25;
   overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2;
   -webkit-box-orient: vertical; overflow: hidden;
 }
+.mb-title-loading { display: inline-flex; align-items: center; gap: 8px; color: #e6e6e6; }
 .mb-sub { margin-top: 3px; font-size: 12px; color: #b3b3b3; }
 
 .mb-progress { padding: 0 16px; }
@@ -203,9 +210,20 @@ const CSS = `
   overflow: hidden;
 }
 .mb-row-meta { margin-top: 2px; font-size: 11px; color: #a7a7a7; }
+.mb-row-resolving {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: ${ACCENT}; font-weight: 500;
+}
+.mb-row-source {
+  color: #777; font-size: 11px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; display: block;
+}
 .mb-row-remove { opacity: 0; transition: opacity 0.15s ease, color 0.15s ease; }
 .mb-row:hover .mb-row-remove, .mb-row:focus-within .mb-row-remove { opacity: 1; }
 .mb-row-remove:focus-visible { opacity: 1; }
+
+.mb-spin { animation: mb-spin 0.8s linear infinite; display: inline-block; flex: none; }
+@keyframes mb-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
 .mb-note { padding: 0 16px 12px; font-size: 12px; color: #f5a3a3; overflow-wrap: anywhere; }
 .mb-empty { padding: 6px 16px 14px; font-size: 12px; color: #a7a7a7; text-align: center; }

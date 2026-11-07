@@ -173,9 +173,7 @@ const triggerPrefetchNext = (
 
   if (!state) return;
 
-  const nextItem = state.queue[0];
-
-  if (!nextItem) {
+  if (state.queue.length === 0) {
     if (
       state.autoplay &&
       state.lastPlayedVideoId &&
@@ -229,35 +227,37 @@ const triggerPrefetchNext = (
     return;
   }
 
-  if (nextItem.resolvedTrack || nextItem.prefetchPromise) return;
+  for (const item of state.queue) {
+    if (item.resolvedTrack || item.prefetchPromise) continue;
 
-  if (!isYouTubeUrl(nextItem.sourceUrl)) {
-    return;
+    if (!isYouTubeUrl(item.sourceUrl)) {
+      continue;
+    }
+
+    ctx.logger.debug("Prefetching track in queue:", item.sourceUrl);
+
+    const prefetchPromise = resolveYouTubeTrack(item.sourceUrl, {
+      log: ctx.logger.log,
+      error: ctx.logger.error,
+      debug: ctx.logger.debug,
+      proxy: options.proxy,
+    })
+      .then((trackInfo) => {
+        item.resolvedTrack = trackInfo;
+        ctx.logger.log("Prefetched queued track:", trackInfo.title);
+        publishPlayerState(ctx, channelId);
+        return trackInfo;
+      })
+      .catch((err: unknown) => {
+        ctx.logger.error("Failed to prefetch track in queue", err);
+        throw err;
+      })
+      .finally(() => {
+        item.prefetchPromise = null;
+      });
+
+    item.prefetchPromise = prefetchPromise;
   }
-
-  ctx.logger.debug("Prefetching next track in queue:", nextItem.sourceUrl);
-
-  const prefetchPromise = resolveYouTubeTrack(nextItem.sourceUrl, {
-    log: ctx.logger.log,
-    error: ctx.logger.error,
-    debug: ctx.logger.debug,
-    proxy: options.proxy,
-  })
-    .then((trackInfo) => {
-      nextItem.resolvedTrack = trackInfo;
-      ctx.logger.log("Prefetched next track:", trackInfo.title);
-      publishPlayerState(ctx, channelId);
-      return trackInfo;
-    })
-    .catch((err: unknown) => {
-      ctx.logger.error("Failed to prefetch next track", err);
-      throw err;
-    })
-    .finally(() => {
-      nextItem.prefetchPromise = null;
-    });
-
-  nextItem.prefetchPromise = prefetchPromise;
 };
 
 const startMusicStream = async (
@@ -279,6 +279,7 @@ const startMusicStream = async (
   }
 
   state.streamStarting = true;
+  publishPlayerState(ctx, channelId);
 
   try {
     const router = ctx.voice.getRouter(channelId);
@@ -551,6 +552,8 @@ const onLoad = async (ctx: TMusicContext) => {
 
       if (state.streamActive || state.streamStarting) {
         const position = enqueueSource(channelId, sourceUrl, invoker.userId);
+
+        publishPlayerState(ctx, channelId);
 
         triggerPrefetchNext(ctx, channelId, getPlaybackSettings());
 

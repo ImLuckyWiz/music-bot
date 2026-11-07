@@ -100,9 +100,17 @@ const InfinityIcon = ({ size = 16 }: IconProps) => (
   </Icon>
 );
 
+/** lucide: loader-2 */
+const LoaderIcon = ({ size = 14 }: IconProps) => (
+  <Icon size={size}>
+    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+  </Icon>
+);
+
 export {
   CloseIcon,
   InfinityIcon,
+  LoaderIcon,
   MuteIcon,
   NoteIcon,
   PlayIcon,

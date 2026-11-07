@@ -4,6 +4,7 @@ import { memo, useEffect, useState } from "react";
 import {
   CloseIcon,
   InfinityIcon,
+  LoaderIcon,
   MuteIcon,
   NoteIcon,
   PlayIcon,
@@ -38,6 +39,7 @@ const PlayerPanel = ({ controller }: PlayerPanelProps) => {
     toggleAutoplay,
   } = controller;
   const [query, setQuery] = useState("");
+  const [pendingQuery, setPendingQuery] = useState("");
   // held locally while dragging, so the slider does not fight its own pushes
   const [volume, setVolumeDraft] = useState(player.volume);
 
@@ -45,21 +47,32 @@ const PlayerPanel = ({ controller }: PlayerPanelProps) => {
 
   useEffect(() => setVolumeDraft(player.volume), [player.volume]);
 
+  useEffect(() => {
+    if (!isBusy && !player.streamStarting) {
+      setPendingQuery("");
+    }
+  }, [isBusy, player.streamStarting]);
+
   const isPlaying = player.streamActive;
-  const isLoading = player.streamStarting;
+  const isLoading =
+    player.streamStarting || (isBusy && !isPlaying && player.queue.length === 0);
   const canSubmit = query.trim() !== "" && !isBusy && can.play;
 
   const submit = () => {
     if (!canSubmit) return;
 
-    play(query.trim());
+    const trimmed = query.trim();
+    if (!isPlaying) {
+      setPendingQuery(trimmed);
+    }
+    play(trimmed);
     setQuery("");
   };
 
   const title = isPlaying
     ? (player.currentSong ?? "Unknown track")
     : isLoading
-      ? "Starting playback..."
+      ? (pendingQuery || "Starting playback...")
       : "Nothing playing";
 
   return (
@@ -86,10 +99,19 @@ const PlayerPanel = ({ controller }: PlayerPanelProps) => {
         <button
           type="button"
           className="mb-add"
-          disabled={!canSubmit}
+          disabled={(!canSubmit && !isBusy) || isBusy}
           onClick={submit}
         >
-          {isPlaying || isLoading ? "Queue" : "Play"}
+          {isBusy ? (
+            <span className="mb-btn-loading">
+              <LoaderIcon size={14} />
+              <span>{isPlaying ? "Adding..." : "Fetching..."}</span>
+            </span>
+          ) : isPlaying || isLoading ? (
+            "Queue"
+          ) : (
+            "Play"
+          )}
         </button>
       </div>
 
@@ -98,25 +120,52 @@ const PlayerPanel = ({ controller }: PlayerPanelProps) => {
           {player.currentThumbnailUrl ? (
             <img src={player.currentThumbnailUrl} alt="" />
           ) : (
-            <span className="mb-art-fallback">
-              <NoteIcon size={34} />
+            <span
+              className={`mb-art-fallback ${isLoading && !isPlaying ? "mb-art-loading" : ""}`}
+            >
+              {isLoading && !isPlaying ? (
+                <LoaderIcon size={28} />
+              ) : (
+                <NoteIcon size={34} />
+              )}
             </span>
           )}
         </div>
 
         <div>
           <div
-            className={isPlaying ? "mb-eyebrow" : "mb-eyebrow mb-eyebrow-idle"}
+            className={
+              isPlaying
+                ? "mb-eyebrow"
+                : isLoading
+                  ? "mb-eyebrow mb-eyebrow-loading"
+                  : "mb-eyebrow mb-eyebrow-idle"
+            }
           >
-            {isPlaying ? "Now playing" : "Idle"}
+            {isPlaying
+              ? "Now playing"
+              : isLoading
+                ? "Fetching song..."
+                : "Idle"}
           </div>
-          <div className="mb-title">{title}</div>
+          <div className="mb-title">
+            {isLoading && !isPlaying ? (
+              <span className="mb-title-loading">
+                <LoaderIcon size={14} />
+                <span>{title}</span>
+              </span>
+            ) : (
+              title
+            )}
+          </div>
           <div className="mb-sub">
             {!can.play
               ? "You cannot control the player"
-              : isPlaying && addedBy
-                ? `Added by ${addedBy}`
-                : "Search above to start the queue"}
+              : isLoading && !isPlaying
+                ? "Connecting to audio stream..."
+                : isPlaying && addedBy
+                  ? `Added by ${addedBy}`
+                  : "Search above to start the queue"}
           </div>
         </div>
       </div>

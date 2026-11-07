@@ -135,6 +135,7 @@ const buildQueueEntries = (state: ChannelStreamState): PlayerQueueEntry[] =>
     position: index + 1,
     label: item.resolvedTrack?.title ?? formatSourceLabel(item.sourceUrl),
     invokerUserId: item.invokerUserId,
+    isResolving: !item.resolvedTrack,
   }));
 
 const emptyPlayerStateSnapshot = (): PlayerStateSnapshot => ({

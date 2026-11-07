@@ -1,5 +1,5 @@
 import type { PlayerQueueEntry } from "../contract";
-import { CloseIcon, PlayIcon } from "./icons";
+import { CloseIcon, LoaderIcon, PlayIcon } from "./icons";
 import { useUserName } from "./store";
 
 type QueueRowProps = {
@@ -38,8 +38,25 @@ const QueueRow = ({
       </div>
 
       <div>
-        <div className="mb-row-label">{item.label}</div>
-        {addedBy ? <div className="mb-row-meta">Added by {addedBy}</div> : null}
+        <div className="mb-row-label">
+          {item.isResolving ? (
+            <span className="mb-row-resolving">
+              <LoaderIcon size={12} />
+              <span>Fetching song info...</span>
+            </span>
+          ) : (
+            item.label
+          )}
+        </div>
+        <div className="mb-row-meta">
+          {item.isResolving ? (
+            <span className="mb-row-source" title={item.label}>
+              {item.label}
+            </span>
+          ) : addedBy ? (
+            `Added by ${addedBy}`
+          ) : null}
+        </div>
       </div>
 
       <button
