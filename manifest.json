@@ -1,10 +1,10 @@
 {
   "id": "music-bot",
   "name": "Music Bot",
-  "author": "Diogo Martino",
-  "description": "Allows users to stream music to voice channels.",
-  "homepage": "https://github.com/Sharkord/music-bot",
+  "author": "ImLuckyWiz",
+  "description": "Allows users to stream music to voice channels with instant streaming and autoplay.",
+  "homepage": "https://github.com/ImLuckyWiz/music-bot",
   "logo": "https://i.imgur.com/uVBNUK9.png",
   "sdkVersion": 2,
-  "version": "0.0.4"
+  "version": "0.0.5"
 }
