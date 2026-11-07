@@ -18,6 +18,8 @@ type TMusicStreamResult = {
   thumbnailUrl?: string;
   durationSeconds?: number;
   id?: string;
+  /** true when this stream also carries video RTP */
+  hasVideo: boolean;
 };
 
 type TMusicOptions = {
@@ -26,6 +28,10 @@ type TMusicOptions = {
   audioSsrc: number;
   rtpHost: string;
   audioRtpPort: number;
+  /** set only when a video transport exists; the track must also carry video */
+  videoPayloadType?: number;
+  videoSsrc?: number;
+  videoRtpPort?: number;
 
   volume?: number; // 0-100, default 100
   bitrate?: string;
@@ -139,6 +145,30 @@ const spawnMusicStream = async (
   let durationSeconds: number | undefined;
   let trackId: string | undefined;
   let ytDlpProcess: ReturnType<typeof Bun.spawn> | null = null;
+  let videoInputs: { video: string; audio: string } | null = null;
+  let videoCodec: TYtDlpTrackInfo["videoCodec"];
+  let inputUserAgent: string | undefined;
+
+  const reconnectArgs = (userAgent?: string): string[] => {
+    const args = [
+      "-reconnect",
+      "1",
+      "-reconnect_streamed",
+      "1",
+      "-reconnect_delay_max",
+      "5",
+    ];
+
+    if (options.proxy) {
+      args.push("-http_proxy", options.proxy);
+    }
+
+    if (userAgent) {
+      args.push("-user_agent", userAgent);
+    }
+
+    return args;
+  };
 
   if (isYouTubeUrl(options.sourceUrl)) {
     const trackInfo =
@@ -154,26 +184,31 @@ const spawnMusicStream = async (
     thumbnailUrl = trackInfo.thumbnailUrl;
     durationSeconds = trackInfo.durationSeconds;
     trackId = trackInfo.id;
+    inputUserAgent = trackInfo.httpHeaders?.["User-Agent"];
 
-    if (trackInfo.streamUrl) {
+    const videoWanted =
+      options.videoRtpPort !== undefined &&
+      options.videoSsrc !== undefined &&
+      options.videoPayloadType !== undefined;
+
+    if (
+      videoWanted &&
+      trackInfo.hasVideo &&
+      trackInfo.videoStreamUrl &&
+      trackInfo.audioStreamUrl &&
+      trackInfo.videoCodec &&
+      trackInfo.videoCodec !== "unsupported"
+    ) {
+      options.log(`Using direct ${trackInfo.videoCodec} video + audio URLs`);
+      videoInputs = {
+        video: trackInfo.videoStreamUrl,
+        audio: trackInfo.audioStreamUrl,
+      };
+      videoCodec = trackInfo.videoCodec;
+    } else if (trackInfo.streamUrl) {
       options.log("Using direct stream URL for YouTube audio");
       inputSource = trackInfo.streamUrl;
-      inputArgs = [
-        "-reconnect",
-        "1",
-        "-reconnect_streamed",
-        "1",
-        "-reconnect_delay_max",
-        "5",
-      ];
-
-      if (options.proxy) {
-        inputArgs.push("-http_proxy", options.proxy);
-      }
-
-      if (trackInfo.httpHeaders?.["User-Agent"]) {
-        inputArgs.push("-user_agent", trackInfo.httpHeaders["User-Agent"]);
-      }
+      inputArgs = reconnectArgs(inputUserAgent);
     } else {
       options.log("Direct stream URL unavailable, falling back to yt-dlp pipe");
       ytDlpProcess = await spawnYouTubeAudioPipe(
@@ -194,18 +229,7 @@ const spawnMusicStream = async (
       inputArgs = [];
     }
   } else {
-    inputArgs = [
-      "-reconnect",
-      "1",
-      "-reconnect_streamed",
-      "1",
-      "-reconnect_delay_max",
-      "5",
-    ];
-
-    if (options.proxy) {
-      inputArgs.push("-http_proxy", options.proxy);
-    }
+    inputArgs = reconnectArgs();
   }
 
   const volumeLevel = Math.min(100, Math.max(0, options.volume ?? 100)) / 100;
@@ -233,20 +257,7 @@ const spawnMusicStream = async (
 
   options.debug("Using audio bitrate:", audioBitrate);
 
-  const ffmpegArgs = [
-    "-hide_banner",
-    "-nostats",
-    "-loglevel",
-    "level+warning",
-
-    ...inputArgs,
-    "-re",
-    "-readrate_initial_burst",
-    "0",
-    "-i",
-    inputSource,
-
-    "-vn",
+  const audioOutputArgs = [
     "-af",
     `volume=${volumeLevel}`,
     "-c:a",
@@ -268,6 +279,62 @@ const spawnMusicStream = async (
     "rtp",
     `rtp://${options.rtpHost}:${options.audioRtpPort}?pkt_size=1200`,
   ];
+
+  // -re paces each input to real time, so both inputs need their own
+  const pacedInput = (url: string): string[] => [
+    ...reconnectArgs(inputUserAgent),
+    "-re",
+    "-readrate_initial_burst",
+    "0",
+    "-i",
+    url,
+  ];
+
+  const commonArgs = ["-hide_banner", "-nostats", "-loglevel", "level+warning"];
+
+  let ffmpegArgs: string[];
+
+  if (videoInputs && videoCodec && videoCodec !== "unsupported") {
+    // muxed sources hand back one URL for both: open it once, map both streams
+    const singleInput = videoInputs.video === videoInputs.audio;
+
+    const videoOutputArgs = [
+      "-map",
+      "0:v:0",
+      "-c:v",
+      "copy",
+      ...(videoCodec === "h264" ? ["-bsf:v", "h264_mp4toannexb"] : []),
+      "-payload_type",
+      String(options.videoPayloadType),
+      "-ssrc",
+      String(options.videoSsrc),
+      "-f",
+      "rtp",
+      `rtp://${options.rtpHost}:${options.videoRtpPort}?pkt_size=1200`,
+    ];
+
+    ffmpegArgs = [
+      ...commonArgs,
+      ...pacedInput(videoInputs.video),
+      ...(singleInput ? [] : pacedInput(videoInputs.audio)),
+      ...videoOutputArgs,
+      "-map",
+      singleInput ? "0:a:0" : "1:a:0",
+      ...audioOutputArgs,
+    ];
+  } else {
+    ffmpegArgs = [
+      ...commonArgs,
+      ...inputArgs,
+      "-re",
+      "-readrate_initial_burst",
+      "0",
+      "-i",
+      inputSource,
+      "-vn",
+      ...audioOutputArgs,
+    ];
+  }
 
   options.debug("Starting music stream with FFmpeg...");
   options.debug("Command:", ffmpegPath, ...ffmpegArgs);
@@ -316,6 +383,7 @@ const spawnMusicStream = async (
     thumbnailUrl,
     durationSeconds,
     id: trackId,
+    hasVideo: videoInputs !== null,
   };
 };
 

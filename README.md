@@ -1,7 +1,21 @@
 # Music Bot
 
 Music bot plugin for Sharkord that streams audio from YouTube or direct links
-into a voice channel. Built against **plugin SDK v2**.
+into a voice channel, and the video of YouTube links as a native stream tile.
+Built against **plugin SDK v2**.
+
+## Video streaming
+
+For YouTube links the bot asks yt-dlp for separate video and audio streams
+(H.264 first, VP9 as the alternative, up to the configured max resolution) and
+forwards the video with ffmpeg stream copy (`-c:v copy`), so the server does no
+video transcoding. Audio is still encoded to Opus. The matching WebRTC producer
+(H.264 or VP9) is created per track, and the player shows a badge such as
+`1080p VP9` while video is streaming.
+
+Sources without a usable video stream (SoundCloud, direct audio links, AV1-only
+videos) fall back to audio only, as does a track whose video producer the voice
+router rejects.
 
 ## Dependencies
 
@@ -58,6 +72,10 @@ download leaves the working one untouched and playback is not interrupted.
 ## Settings
 
 - **Bitrate** — the audio bitrate for the stream (default `128k`).
+- **Stream Video** — stream the video of YouTube links (default on). Turn it
+  off for audio only.
+- **Max Resolution** — `720p`, `1080p` or `1440p` (default `1080p`). Anything
+  above 1080p is VP9 only. Applies from the next track on.
 - **Proxy URL** — optional proxy for YouTube requests.
 
 ## Screenshots

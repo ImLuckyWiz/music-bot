@@ -7,6 +7,7 @@ const EMPTY_PLAYER_STATE: PlayerStateSnapshot = {
   currentSong: null,
   currentInvokerUserId: null,
   currentThumbnailUrl: null,
+  videoLabel: null,
   streamActive: false,
   streamStarting: false,
   playbackStartedAtEpochMs: null,

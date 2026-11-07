@@ -27,10 +27,20 @@ import {
   takeNextFromQueue,
 } from "./player-state";
 import {
+  buildVideoRtpCodecs,
+  DEFAULT_MAX_RESOLUTION,
+  formatVideoLabel,
+  getVideoPayloadType,
+  MAX_RESOLUTIONS,
+  parseBooleanSetting,
+  parseMaxResolution,
+} from "./video";
+import {
   extractYouTubeVideoId,
   fetchYouTubeRelatedTracks,
   isYouTubeUrl,
   resolveYouTubeTrack,
+  type TYtDlpOptions,
   type TYtDlpTrackInfo,
 } from "./yt-dlp";
 
@@ -42,7 +52,24 @@ type TCleanupContext = Pick<TMusicContext, "logger"> &
 type PlaybackSettings = {
   bitrate: string;
   proxy?: string;
+  streamVideo: boolean;
+  maxResolution: number;
 };
+
+/** the height to resolve for: 0 means audio only */
+const getVideoHeight = (options: PlaybackSettings): number =>
+  options.streamVideo ? options.maxResolution : 0;
+
+const buildYtDlpOptions = (
+  ctx: TMusicContext,
+  options: PlaybackSettings,
+): TYtDlpOptions => ({
+  log: ctx.logger.log,
+  error: ctx.logger.error,
+  debug: ctx.logger.debug,
+  proxy: options.proxy,
+  maxHeight: getVideoHeight(options),
+});
 
 let binariesReady = false;
 let binariesInitError: Error | null = null;
@@ -64,6 +91,10 @@ const cleanupChannel = (ctx: TCleanupContext, channelId: number): void => {
     state.audioProducer.observer.off("close", state.producerCloseHandler);
   }
 
+  if (state.videoProducerCloseHandler && state.videoProducer) {
+    state.videoProducer.observer.off("close", state.videoProducerCloseHandler);
+  }
+
   if (state.routerCloseHandler && state.router) {
     state.router.off("@close", state.routerCloseHandler);
   }
@@ -77,12 +108,25 @@ const cleanupChannel = (ctx: TCleanupContext, channelId: number): void => {
   } catch {}
 
   try {
+    state.videoProducer?.close();
+  } catch {}
+
+  try {
     state.audioTransport?.close();
+  } catch {}
+
+  try {
+    state.videoTransport?.close();
   } catch {}
 
   state.streamHandle = null;
   state.audioProducer = null;
   state.audioTransport = null;
+  state.videoProducer = null;
+  state.videoTransport = null;
+  state.videoProducerCloseHandler = null;
+  state.activeVideoCodec = null;
+  state.currentVideoLabel = null;
   state.router = null;
   state.routerCloseHandler = null;
   state.producerCloseHandler = null;
@@ -256,12 +300,10 @@ const triggerPrefetchNext = (
 
           if (!candidate) return null;
 
-          const trackInfo = await resolveYouTubeTrack(candidate.url, {
-            log: ctx.logger.log,
-            error: ctx.logger.error,
-            debug: ctx.logger.debug,
-            proxy: options.proxy,
-          });
+          const trackInfo = await resolveYouTubeTrack(
+            candidate.url,
+            buildYtDlpOptions(ctx, options),
+          );
 
           state.prefetchedAutoplayTrack = trackInfo;
           ctx.logger.log("Prefetched autoplay track:", trackInfo.title);
@@ -288,12 +330,10 @@ const triggerPrefetchNext = (
 
     ctx.logger.debug("Prefetching track in queue:", item.sourceUrl);
 
-    const prefetchPromise = resolveYouTubeTrack(item.sourceUrl, {
-      log: ctx.logger.log,
-      error: ctx.logger.error,
-      debug: ctx.logger.debug,
-      proxy: options.proxy,
-    })
+    const prefetchPromise = resolveYouTubeTrack(
+      item.sourceUrl,
+      buildYtDlpOptions(ctx, options),
+    )
       .then((trackInfo) => {
         item.resolvedTrack = trackInfo;
         ctx.logger.log("Prefetched queued track:", trackInfo.title);
@@ -334,6 +374,21 @@ const startMusicStream = async (
   publishPlayerState(ctx, channelId);
 
   try {
+    // resolve first: the video codec decides which producer to create
+    let trackInfo = preResolvedTrack;
+
+    if (isYouTubeUrl(sourceUrl)) {
+      const wantedHeight = getVideoHeight(options);
+
+      // a prefetch made under other video settings has the wrong formats
+      if (!trackInfo || trackInfo.resolvedMaxHeight !== wantedHeight) {
+        trackInfo = await resolveYouTubeTrack(
+          trackInfo?.webpageUrl ?? sourceUrl,
+          buildYtDlpOptions(ctx, options),
+        );
+      }
+    }
+
     const router = ctx.voice.getRouter(channelId);
     const { announcedAddress, ip } = ctx.voice.getListenInfo();
 
@@ -375,6 +430,61 @@ const startMusicStream = async (
       },
     });
 
+    const videoCodec =
+      trackInfo?.hasVideo &&
+      trackInfo.videoCodec &&
+      trackInfo.videoCodec !== "unsupported"
+        ? trackInfo.videoCodec
+        : null;
+    const videoSsrc = Math.floor(Math.random() * 1e9);
+
+    if (videoCodec) {
+      try {
+        state.videoTransport = await router.createPlainTransport({
+          listenIp: {
+            ip,
+            announcedIp: announcedAddress,
+          },
+          rtcpMux: true,
+          comedia: true,
+          enableSrtp: false,
+        });
+
+        state.videoProducer = await state.videoTransport.produce({
+          kind: "video",
+          rtpParameters: {
+            codecs: buildVideoRtpCodecs(videoCodec),
+            encodings: [{ ssrc: videoSsrc }],
+          },
+        });
+
+        state.activeVideoCodec = videoCodec;
+        state.currentVideoLabel = formatVideoLabel(
+          trackInfo?.videoHeight,
+          videoCodec,
+        );
+      } catch (err) {
+        // the router may not accept this codec; audio still plays
+        ctx.logger.error(
+          `Could not create the ${videoCodec} video producer, continuing with audio only`,
+          err,
+        );
+
+        try {
+          state.videoProducer?.close();
+        } catch {}
+
+        try {
+          state.videoTransport?.close();
+        } catch {}
+
+        state.videoProducer = null;
+        state.videoTransport = null;
+        state.activeVideoCodec = null;
+        state.currentVideoLabel = null;
+      }
+    }
+
     ctx.logger.log("Final source URL:", sourceUrl);
 
     const result = await spawnMusicStream({
@@ -383,10 +493,17 @@ const startMusicStream = async (
       audioSsrc,
       rtpHost: ip,
       audioRtpPort: state.audioTransport.tuple.localPort,
+      ...(state.videoTransport && state.activeVideoCodec
+        ? {
+            videoPayloadType: getVideoPayloadType(state.activeVideoCodec),
+            videoSsrc,
+            videoRtpPort: state.videoTransport.tuple.localPort,
+          }
+        : {}),
       volume: state.volume,
       bitrate: options.bitrate,
       proxy: options.proxy,
-      preResolvedTrack,
+      preResolvedTrack: trackInfo,
       log: ctx.logger.log,
       error: ctx.logger.error,
       debug: ctx.logger.debug,
@@ -417,12 +534,19 @@ const startMusicStream = async (
       bannerUrl: result.thumbnailUrl,
       producers: {
         audio: state.audioProducer,
+        video: state.videoProducer ?? undefined,
       },
     });
 
     state.producerCloseHandler = () => cleanupChannel(ctx, channelId);
 
     state.audioProducer.observer.on("close", state.producerCloseHandler);
+
+    if (state.videoProducer) {
+      state.videoProducerCloseHandler = () => cleanupChannel(ctx, channelId);
+
+      state.videoProducer.observer.on("close", state.videoProducerCloseHandler);
+    }
 
     const videoId = result.id ?? extractYouTubeVideoId(sourceUrl);
     if (videoId) {
@@ -486,12 +610,10 @@ const playNextInQueue = async (
             related[0];
 
           if (candidate) {
-            autoplayTrack = await resolveYouTubeTrack(candidate.url, {
-              log: ctx.logger.log,
-              error: ctx.logger.error,
-              debug: ctx.logger.debug,
-              proxy: options.proxy,
-            });
+            autoplayTrack = await resolveYouTubeTrack(
+              candidate.url,
+              buildYtDlpOptions(ctx, options),
+            );
           }
         } catch (err) {
           ctx.logger.error("Failed to fetch autoplay track on queue end", err);
@@ -557,6 +679,21 @@ const onLoad = async (ctx: TMusicContext) => {
       defaultValue: "128k",
     },
     {
+      key: "streamVideo",
+      name: "Stream Video",
+      description:
+        "Stream the video of YouTube links as a native stream tile. When disabled, only audio is streamed.",
+      type: "boolean",
+      defaultValue: true,
+    },
+    {
+      key: "maxResolution",
+      name: "Max Resolution",
+      description: `Highest video resolution to stream (${MAX_RESOLUTIONS.map((r) => `${r}p`).join(", ")}). Video is copied, not transcoded, so higher resolutions cost bandwidth rather than CPU. Resolutions above 1080p are VP9 only.`,
+      type: "string",
+      defaultValue: `${DEFAULT_MAX_RESOLUTION}p`,
+    },
+    {
       key: "proxy",
       name: "Proxy URL",
       description:
@@ -569,6 +706,8 @@ const onLoad = async (ctx: TMusicContext) => {
   const getPlaybackSettings = (): PlaybackSettings => ({
     bitrate: settings.get("bitrate"),
     proxy: settings.get("proxy"),
+    streamVideo: parseBooleanSetting(settings.get("streamVideo"), true),
+    maxResolution: parseMaxResolution(settings.get("maxResolution")),
   });
 
   ctx.events.on("voice:runtime_closed", ({ channelId }) => {

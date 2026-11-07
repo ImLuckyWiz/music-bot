@@ -268,6 +268,11 @@ const PlayerPanel = ({ controller }: PlayerPanelProps) => {
               : isLoading
                 ? "Fetching song..."
                 : "Idle"}
+            {isPlaying && player.videoLabel ? (
+              <span className="mb-badge" title="Streaming video">
+                {player.videoLabel}
+              </span>
+            ) : null}
           </div>
           <div className="mb-title">
             {isLoading && !isPlaying ? (

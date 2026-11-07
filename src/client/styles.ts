@@ -86,6 +86,12 @@ const CSS = `
   overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2;
   -webkit-box-orient: vertical; overflow: hidden;
 }
+.mb-badge {
+  display: inline-block; margin-left: 8px; padding: 1px 6px; border-radius: 4px;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.04em; line-height: 1.5;
+  vertical-align: middle; text-transform: none; color: #fff;
+  background: rgba(255, 255, 255, 0.16);
+}
 .mb-title-loading { display: inline-flex; align-items: center; gap: 8px; color: #e6e6e6; }
 .mb-sub { margin-top: 3px; font-size: 12px; color: #b3b3b3; }
 

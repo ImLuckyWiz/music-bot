@@ -55,14 +55,14 @@ jobs:
           META="dist/${VERSION}.json"
 
           cat << 'EOF' > release_notes.md
-          ### Music Bot Fast Streaming & Autoplay v${VERSION}
-          - **YouTube Search Suggestions**: Real-time autocomplete suggestions powered by YouTube's suggest query API as you type song names.
-          - **Smart Suggestion Handling**: Instant client/server query caching, 180ms debounce, length filter (> 2 chars), and keyboard navigation (Arrow Up/Down/Enter/Escape).
-          - **Instant Loading Feedback**: Immediate loading spinner and query feedback when starting playback from idle.
-          - **Queue Resolving State**: Enqueued tracks immediately display "Fetching song info..." with an animated spinner.
-          - **YouTube Autoplay**: Automatically queues recommended tracks based on YouTube's algorithmic mix.
-          - **Autoplay Toggle**: Spotify-styled smooth switch toggle directly in the music player topbar widget.
-          - **Built for Sharkord**: Unpacks to \`music-bot/\` containing \`manifest.json\`, \`client/index.js\`, and \`server/index.js\`.
+          ### Music Bot Native Video Streaming v${VERSION}
+          - **Native Video Streaming**: Streams YouTube video into voice channels as a native WebRTC video tile alongside audio.
+          - **Zero-Transcode Stream Copy**: Uses FFmpeg stream copy (`-c:v copy`) for H.264 (avc1) and VP9 (vp09), resulting in near-zero server CPU usage.
+          - **Dynamic Codec Selection**: Automatically creates matching H.264 or VP9 WebRTC producers based on the stream source.
+          - **Resolution & Video Controls**: Configurable resolution settings (720p, 1080p, 1440p) and a "Stream Video" toggle in plugin settings.
+          - **In-Player Video Badge**: Shows active resolution and codec badge (e.g. `1080p VP9`) during video playback.
+          - **Graceful Fallback**: Automatically falls back to audio-only streaming for audio-only links (SoundCloud, direct links) or unsupported video codecs.
+          - **Built for Sharkord**: Unpacks to `music-bot/` containing `manifest.json`, `client/index.js`, and `server/index.js`.
           EOF
 
           echo "Checking release for tag $TAG..."
@@ -72,6 +72,6 @@ jobs:
           else
             echo "Creating new release $TAG..."
             gh release create "$TAG" "$ARCHIVE" "$META" \
-              --title "v${VERSION} - YouTube Search Suggestions" \
+              --title "v${VERSION} - Native WebRTC Video Streaming" \
               --notes-file release_notes.md
           fi

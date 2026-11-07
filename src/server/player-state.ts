@@ -20,6 +20,11 @@ type ChannelStreamState = {
   ffmpegProcess: TMusicStreamResult["process"] | null;
   audioProducer: Producer | null;
   audioTransport: PlainTransport<AppData> | null;
+  videoTransport: PlainTransport<AppData> | null;
+  videoProducer: Producer | null;
+  videoProducerCloseHandler: ((...args: unknown[]) => void) | null;
+  activeVideoCodec: "h264" | "vp9" | null;
+  currentVideoLabel: string | null;
   router: Router<AppData> | null;
   streamHandle: TExternalStreamHandle | null;
   routerCloseHandler: ((...args: unknown[]) => void) | null;
@@ -49,6 +54,11 @@ const createInitialState = (): ChannelStreamState => ({
   ffmpegProcess: null,
   audioProducer: null,
   audioTransport: null,
+  videoTransport: null,
+  videoProducer: null,
+  videoProducerCloseHandler: null,
+  activeVideoCodec: null,
+  currentVideoLabel: null,
   router: null,
   streamHandle: null,
   routerCloseHandler: null,
@@ -142,6 +152,7 @@ const emptyPlayerStateSnapshot = (): PlayerStateSnapshot => ({
   currentSong: null,
   currentInvokerUserId: null,
   currentThumbnailUrl: null,
+  videoLabel: null,
   streamActive: false,
   streamStarting: false,
   playbackStartedAtEpochMs: null,
@@ -164,6 +175,7 @@ const getPlayerStateSnapshot = (
     currentSong: state.currentSong,
     currentInvokerUserId: state.currentInvokerUserId,
     currentThumbnailUrl: state.currentThumbnailUrl,
+    videoLabel: state.currentVideoLabel,
     streamActive: state.streamActive,
     streamStarting: state.streamStarting,
     playbackStartedAtEpochMs: state.playbackStartedAtEpochMs,

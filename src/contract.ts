@@ -9,6 +9,8 @@ type PlayerStateSnapshot = {
   currentSong: string | null;
   currentInvokerUserId: number | null;
   currentThumbnailUrl: string | null;
+  /** e.g. "1080p VP9"; null when the track is audio only */
+  videoLabel: string | null;
   streamActive: boolean;
   streamStarting: boolean;
   playbackStartedAtEpochMs: number | null;

@@ -7,14 +7,27 @@ type TYtDlpMetadataResult = {
   durationSeconds?: number;
 };
 
+type TVideoCodec = "h264" | "vp9" | "unsupported";
+
 type TYtDlpTrackInfo = {
   id?: string;
   title: string;
   thumbnailUrl?: string;
   durationSeconds?: number;
+  /** audio-capable direct URL, used by the audio-only pipeline */
   streamUrl?: string;
   httpHeaders?: Record<string, string>;
   webpageUrl?: string;
+  /** video and audio inputs; identical when the source is a single muxed file */
+  videoStreamUrl?: string;
+  audioStreamUrl?: string;
+  videoCodec?: TVideoCodec;
+  videoWidth?: number;
+  videoHeight?: number;
+  /** true only when a supported video codec and both stream URLs are present */
+  hasVideo: boolean;
+  /** the max height this track was resolved for, 0 meaning audio only */
+  resolvedMaxHeight: number;
 };
 
 type TRelatedTrack = {
@@ -28,6 +41,22 @@ type TYtDlpOptions = {
   debug: (...messages: unknown[]) => void;
   error: (...messages: unknown[]) => void;
   proxy?: string;
+  /** when set, resolve a video + audio pair up to this height instead of audio only */
+  maxHeight?: number;
+};
+
+const AUDIO_FORMAT_SELECTOR = "bestaudio[ext=webm]/bestaudio/best";
+
+/**
+ * H.264 first up to 1080p for the widest client support; above 1080p only VP9
+ * exists on YouTube, so it leads there to avoid settling for a 1080p H.264.
+ */
+const buildVideoFormatSelector = (maxHeight: number): string => {
+  const h264 = `bestvideo[vcodec^=avc1][height<=${maxHeight}]+bestaudio`;
+  const vp9 = `bestvideo[vcodec^=vp09][height<=${maxHeight}]+bestaudio`;
+  const ordered = maxHeight > 1080 ? [vp9, h264] : [h264, vp9];
+
+  return [...ordered, `best[height<=${maxHeight}]`, "best"].join("/");
 };
 
 const YT_DLP_COMMAND_TIMEOUT_MS = 25000;
@@ -165,9 +194,43 @@ const runYtDlp = async (
   }
 };
 
+type TRawFormat = {
+  url?: unknown;
+  vcodec?: unknown;
+  acodec?: unknown;
+  width?: unknown;
+  height?: unknown;
+  http_headers?: unknown;
+};
+
+const hasCodec = (codec: unknown): boolean =>
+  typeof codec === "string" && codec !== "" && codec !== "none";
+
+const detectVideoCodec = (vcodec: unknown): TVideoCodec => {
+  if (typeof vcodec !== "string") return "unsupported";
+
+  const codec = vcodec.toLowerCase();
+
+  if (codec.startsWith("avc1")) return "h264";
+  if (codec.startsWith("vp09") || codec.startsWith("vp9")) return "vp9";
+
+  return "unsupported";
+};
+
+const getHttpUrl = (value: unknown): string | undefined =>
+  typeof value === "string" && value.trim().startsWith("http")
+    ? value.trim()
+    : undefined;
+
+const toPositiveInt = (value: unknown): number | undefined =>
+  typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : undefined;
+
 const parseYtDlpTrackInfo = (
   stdout: string,
   sourceUrl: string,
+  maxHeight = 0,
 ): TYtDlpTrackInfo => {
   const jsonText = stdout
     .trim()
@@ -176,29 +239,23 @@ const parseYtDlpTrackInfo = (
     .find(Boolean);
 
   if (!jsonText) {
-    return { title: sourceUrl };
+    return { title: sourceUrl, hasVideo: false, resolvedMaxHeight: maxHeight };
   }
 
-  const parsed = JSON.parse(jsonText) as {
+  type TMetadata = TRawFormat & {
     id?: unknown;
     title?: unknown;
     thumbnail?: unknown;
     duration?: unknown;
-    url?: unknown;
     webpage_url?: unknown;
-    http_headers?: unknown;
-    entries?: Array<{
-      id?: unknown;
-      title?: unknown;
-      thumbnail?: unknown;
-      duration?: unknown;
-      url?: unknown;
-      webpage_url?: unknown;
-      http_headers?: unknown;
-    }>;
+    requested_formats?: TRawFormat[];
   };
 
-  const metadata = Array.isArray(parsed.entries)
+  const parsed = JSON.parse(jsonText) as TMetadata & {
+    entries?: TMetadata[];
+  };
+
+  const metadata: TMetadata = Array.isArray(parsed.entries)
     ? (parsed.entries.find(Boolean) ?? parsed)
     : parsed;
 
@@ -222,19 +279,46 @@ const parseYtDlpTrackInfo = (
       ? Math.max(0, Math.floor(metadata.duration))
       : undefined;
 
-  const streamUrl =
-    typeof metadata.url === "string" && metadata.url.trim().startsWith("http")
-      ? metadata.url.trim()
-      : undefined;
-
   const webpageUrl =
     typeof metadata.webpage_url === "string" && metadata.webpage_url.trim()
       ? metadata.webpage_url.trim()
       : undefined;
 
+  // a merged selector (video+audio) reports its parts in requested_formats;
+  // a single format reports itself at the top level
+  const formats: TRawFormat[] =
+    Array.isArray(metadata.requested_formats) &&
+    metadata.requested_formats.length > 0
+      ? metadata.requested_formats
+      : [metadata];
+
+  const videoFormat = formats.find((format) => hasCodec(format.vcodec));
+  const audioOnlyFormat = formats.find(
+    (format) => hasCodec(format.acodec) && !hasCodec(format.vcodec),
+  );
+
+  const videoUrl = getHttpUrl(videoFormat?.url);
+  const muxedAudio = videoFormat && hasCodec(videoFormat.acodec);
+  const audioUrl = getHttpUrl(audioOnlyFormat?.url) ?? (muxedAudio ? videoUrl : undefined);
+
+  const streamUrl =
+    getHttpUrl(metadata.url) ??
+    getHttpUrl(audioOnlyFormat?.url) ??
+    audioUrl;
+
+  const videoCodec = videoFormat ? detectVideoCodec(videoFormat.vcodec) : undefined;
+  const wantsVideo = maxHeight > 0;
+  const hasVideo =
+    wantsVideo &&
+    !!videoUrl &&
+    !!audioUrl &&
+    !!videoCodec &&
+    videoCodec !== "unsupported";
+
+  const headerSource = (videoFormat?.http_headers ?? metadata.http_headers) as unknown;
   const httpHeaders =
-    metadata.http_headers && typeof metadata.http_headers === "object"
-      ? (metadata.http_headers as Record<string, string>)
+    headerSource && typeof headerSource === "object"
+      ? (headerSource as Record<string, string>)
       : undefined;
 
   return {
@@ -245,6 +329,13 @@ const parseYtDlpTrackInfo = (
     streamUrl,
     webpageUrl,
     httpHeaders,
+    videoStreamUrl: wantsVideo ? videoUrl : undefined,
+    audioStreamUrl: wantsVideo ? audioUrl : undefined,
+    videoCodec: wantsVideo ? videoCodec : undefined,
+    videoWidth: wantsVideo ? toPositiveInt(videoFormat?.width) : undefined,
+    videoHeight: wantsVideo ? toPositiveInt(videoFormat?.height) : undefined,
+    hasVideo,
+    resolvedMaxHeight: maxHeight,
   };
 };
 
@@ -254,17 +345,22 @@ const resolveYouTubeTrack = async (
 ): Promise<TYtDlpTrackInfo> => {
   const ytDlpPath = getYtDlpBinaryPath();
   const base = await getYtDlpBaseArgs(options);
+  const maxHeight = options.maxHeight && options.maxHeight > 0 ? options.maxHeight : 0;
   const cmd = [
     ytDlpPath,
     ...base,
     "-f",
-    "bestaudio[ext=webm]/bestaudio/best",
+    maxHeight > 0 ? buildVideoFormatSelector(maxHeight) : AUDIO_FORMAT_SELECTOR,
     "--dump-single-json",
     "--skip-download",
     sourceUrl,
   ];
 
-  options.log("Resolving YouTube track via yt-dlp:", sourceUrl);
+  options.log(
+    "Resolving YouTube track via yt-dlp:",
+    sourceUrl,
+    maxHeight > 0 ? `(video up to ${maxHeight}p)` : "(audio only)",
+  );
 
   const res = await runYtDlp(cmd, "track resolution", options);
 
@@ -272,7 +368,17 @@ const resolveYouTubeTrack = async (
     throw new Error(`yt-dlp track resolution failed (exit ${res.exitCode})`);
   }
 
-  return parseYtDlpTrackInfo(res.stdout, sourceUrl);
+  const track = parseYtDlpTrackInfo(res.stdout, sourceUrl, maxHeight);
+
+  if (maxHeight > 0) {
+    options.log(
+      track.hasVideo
+        ? `Resolved ${track.videoCodec} video ${track.videoWidth ?? "?"}x${track.videoHeight ?? "?"}`
+        : `No streamable video (codec: ${track.videoCodec ?? "none"}); audio only`,
+    );
+  }
+
+  return track;
 };
 
 const fetchYouTubeMetadata = async (
@@ -299,7 +405,7 @@ const spawnYouTubeAudioPipe = async (
     ytDlpPath,
     ...base,
     "-f",
-    "bestaudio[ext=webm]/bestaudio/best",
+    AUDIO_FORMAT_SELECTOR,
     "-o",
     "-",
     sourceUrl,
@@ -451,6 +557,7 @@ export {
   spawnYouTubeAudioPipe,
 };
 export type {
+  TVideoCodec,
   TRelatedTrack,
   TYtDlpMetadataResult,
   TYtDlpOptions,
