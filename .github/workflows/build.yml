@@ -54,6 +54,13 @@ jobs:
           ARCHIVE="dist/music-bot-${VERSION}.tar.gz"
           META="dist/${VERSION}.json"
 
+          cat << 'EOF' > release_notes.md
+          ### Music Bot Fast Streaming Build
+          - **Instant playback**: Direct HTTP audio stream URL extraction without full-file pre-buffering.
+          - **Background queue prefetching**: Upcoming songs are resolved ahead of time for instantaneous transitions.
+          - **Built for Sharkord**: Unpacks to \`music-bot/\` containing \`manifest.json\`, \`client/index.js\`, and \`server/index.js\`.
+          EOF
+
           echo "Checking release for tag $TAG..."
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG exists. Uploading assets..."
@@ -62,8 +69,5 @@ jobs:
             echo "Creating new release $TAG..."
             gh release create "$TAG" "$ARCHIVE" "$META" \
               --title "v${VERSION} - Fast Streaming & Zero Delay" \
-              --notes "### Music Bot v${VERSION}
-- **Instant playback**: Direct HTTP audio stream URL extraction without full-file pre-buffering.
-- **Background queue prefetching**: Upcoming songs are resolved ahead of time for instantaneous transitions.
-- **Built for Sharkord**: Unpacks to \`music-bot/\` containing \`manifest.json\`, \`client/index.js\`, and \`server/index.js\`."
+              --notes-file release_notes.md
           fi
