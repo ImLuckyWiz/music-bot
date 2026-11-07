@@ -53,10 +53,10 @@ type TCleanupContext = Pick<TMusicContext, "logger"> &
 type PlaybackSettings = {
   bitrate: string;
   proxy?: string;
+  /** set per channel from the in-panel Video toggle, not from the plugin settings */
   streamVideo: boolean;
   maxResolution: number;
   limitFps: boolean;
-  chunkedInput: boolean;
 };
 
 /** the height to resolve for: 0 means audio only */
@@ -357,7 +357,7 @@ const triggerPrefetchNext = (
 };
 
 // how long viewers get to attach to a new video stream before FFmpeg starts
-const VIDEO_VIEWER_SETUP_DELAY_MS = 1500;
+const VIDEO_VIEWER_SETUP_DELAY_MS = 2000;
 
 const startMusicStream = async (
   ctx: TMusicContext,
@@ -536,7 +536,6 @@ const startMusicStream = async (
       volume: state.volume,
       bitrate: options.bitrate,
       proxy: options.proxy,
-      chunkedInput: options.chunkedInput,
       limitFps: options.limitFps,
       videoMaxHeight: trackInfo?.resolvedMaxHeight,
       preResolvedTrack: trackInfo,
@@ -706,14 +705,6 @@ const onLoad = async (ctx: TMusicContext) => {
       defaultValue: "128k",
     },
     {
-      key: "streamVideo",
-      name: "Stream Video",
-      description:
-        "Stream the video of YouTube links as a native stream tile. When disabled, only audio is streamed.",
-      type: "boolean",
-      defaultValue: true,
-    },
-    {
       key: "maxResolution",
       name: "Max Resolution",
       description: `Highest video resolution to stream (${MAX_RESOLUTIONS.map((r) => `${r}p`).join(", ")}). Video is copied, not transcoded, so higher resolutions cost bandwidth rather than CPU. Resolutions above 1080p are VP9 only.`,
@@ -725,14 +716,6 @@ const onLoad = async (ctx: TMusicContext) => {
       name: "Limit to 30 fps",
       description:
         "Prefer 30 fps (or lower) video. Video is copied untouched, so 60 fps roughly doubles the bandwidth and the chance of stutter. Falls back to 60 fps when nothing else exists.",
-      type: "boolean",
-      defaultValue: true,
-    },
-    {
-      key: "chunkedInput",
-      name: "Chunked Input",
-      description:
-        "Fetch YouTube media in short ranged requests through a local proxy, with read-ahead and automatic retries, instead of one long connection that YouTube may reset. Off by default while it is being tested.",
       type: "boolean",
       defaultValue: false,
     },
@@ -746,13 +729,12 @@ const onLoad = async (ctx: TMusicContext) => {
     },
   ] as const);
 
-  const getPlaybackSettings = (): PlaybackSettings => ({
+  const getPlaybackSettings = (channelId: number): PlaybackSettings => ({
     bitrate: settings.get("bitrate"),
     proxy: settings.get("proxy"),
-    streamVideo: parseBooleanSetting(settings.get("streamVideo"), true),
+    streamVideo: getState(channelId).videoEnabled,
     maxResolution: parseMaxResolution(settings.get("maxResolution")),
-    limitFps: parseBooleanSetting(settings.get("limitFps"), true),
-    chunkedInput: parseBooleanSetting(settings.get("chunkedInput"), false),
+    limitFps: parseBooleanSetting(settings.get("limitFps"), false),
   });
 
   ctx.events.on("voice:runtime_closed", ({ channelId }) => {
@@ -800,7 +782,7 @@ const onLoad = async (ctx: TMusicContext) => {
 
         publishPlayerState(ctx, channelId);
 
-        triggerPrefetchNext(ctx, channelId, getPlaybackSettings());
+        triggerPrefetchNext(ctx, channelId, getPlaybackSettings(channelId));
 
         return buildActionResult(
           ctx,
@@ -813,7 +795,7 @@ const onLoad = async (ctx: TMusicContext) => {
         ctx,
         channelId,
         sourceUrl,
-        getPlaybackSettings(),
+        getPlaybackSettings(channelId),
         invoker.userId,
       );
 
@@ -836,7 +818,7 @@ const onLoad = async (ctx: TMusicContext) => {
         throw new Error("Queue item not found.");
       }
 
-      triggerPrefetchNext(ctx, channelId, getPlaybackSettings());
+      triggerPrefetchNext(ctx, channelId, getPlaybackSettings(channelId));
 
       return buildActionResult(
         ctx,
@@ -867,7 +849,7 @@ const onLoad = async (ctx: TMusicContext) => {
         const message = await playNextInQueue(
           ctx,
           channelId,
-          getPlaybackSettings(),
+          getPlaybackSettings(channelId),
         );
 
         return buildActionResult(ctx, message, channelId);
@@ -912,7 +894,7 @@ const onLoad = async (ctx: TMusicContext) => {
           ctx,
           channelId,
           selectedItem.sourceUrl,
-          getPlaybackSettings(),
+          getPlaybackSettings(channelId),
           selectedItem.invokerUserId,
           preResolved,
         );
@@ -921,7 +903,7 @@ const onLoad = async (ctx: TMusicContext) => {
       }
 
       state.queue.unshift(selectedItem);
-      triggerPrefetchNext(ctx, channelId, getPlaybackSettings());
+      triggerPrefetchNext(ctx, channelId, getPlaybackSettings(channelId));
       state.endAction = "next";
       cleanupChannel(ctx, channelId);
 
@@ -998,7 +980,7 @@ const onLoad = async (ctx: TMusicContext) => {
       state.autoplay = !state.autoplay;
 
       if (state.autoplay) {
-        triggerPrefetchNext(ctx, channelId, getPlaybackSettings());
+        triggerPrefetchNext(ctx, channelId, getPlaybackSettings(channelId));
       } else {
         state.prefetchedAutoplayTrack = null;
       }
@@ -1006,6 +988,29 @@ const onLoad = async (ctx: TMusicContext) => {
       return buildActionResult(
         ctx,
         `Autoplay is now ${state.autoplay ? "enabled" : "disabled"}.`,
+        channelId,
+      );
+    },
+  });
+
+  ctx.actions.register({
+    name: "toggleVideo",
+    description:
+      "Switches between streaming YouTube video with the audio, or audio only",
+    requires: Permission.JOIN_VOICE_CHANNELS,
+    executes: async (invoker) => {
+      const channelId = requireVoiceChannelId(
+        invoker.currentVoiceChannelId,
+        "You must be in a voice channel to toggle video.",
+      );
+      const state = getState(channelId);
+      state.videoEnabled = !state.videoEnabled;
+
+      // a track queued ahead was resolved for the old choice; it is
+      // re-resolved when it starts, so nothing else needs to change here
+      return buildActionResult(
+        ctx,
+        `Video is now ${state.videoEnabled ? "enabled" : "disabled"} (from the next track).`,
         channelId,
       );
     },

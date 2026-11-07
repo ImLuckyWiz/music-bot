@@ -70,15 +70,20 @@ try {
   if (clientResult.success) {
     clientBundled = true;
     console.log("Client bundled successfully from src/client/index.ts");
+  } else {
+    console.warn("Client bundling failed:\n", clientResult.logs.join("\n"));
   }
-} catch {
-  // Ignore error and fall back to cached client bundle
+} catch (err) {
+  // fall back to the cached client bundle, but say so
+  console.warn("Client bundling failed:", err);
 }
 
 if (!clientBundled) {
   const cachedClient = path.join(pluginRootDir, "client/index.js");
   if (await Bun.file(cachedClient).exists()) {
-    console.log("Using cached client/index.js bundle...");
+    console.warn(
+      "WARNING: shipping the cached client/index.js, which does NOT include any change made under src/client since it was last generated. Rebuild it where @sharkord/ui resolves and commit it.",
+    );
     await fs.copyFile(cachedClient, path.join(outDir, "client/index.js"));
   } else {
     console.error("No client bundle found at client/index.js and failed to compile from source!");

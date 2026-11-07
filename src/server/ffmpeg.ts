@@ -36,8 +36,6 @@ type TMusicOptions = {
   videoSsrc?: number;
   videoRtpPort?: number;
 
-  /** fetch YouTube media through the local chunk proxy instead of directly */
-  chunkedInput?: boolean;
   /** needed to re-resolve a track whose URL expired mid-stream */
   limitFps?: boolean;
   /** the height the track was resolved for; sizes the H.264 re-encode bitrate */
@@ -223,8 +221,6 @@ const spawnMusicStream = async (
     track: TYtDlpTrackInfo,
     pick: (fresh: TYtDlpTrackInfo) => string | undefined,
   ): Promise<string> => {
-    if (!options.chunkedInput) return url;
-
     try {
       const session = await createProxySession({
         label,

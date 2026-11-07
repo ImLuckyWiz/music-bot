@@ -18,6 +18,8 @@ type PlayerStateSnapshot = {
   volume: number;
   queue: PlayerQueueEntry[];
   autoplay: boolean;
+  /** whether YouTube video is streamed, or only the audio; applies from the next track */
+  videoEnabled: boolean;
 };
 
 type PlayerActionResponse = {
@@ -56,6 +58,10 @@ type TSharkord = {
       response: PlayerActionResponse;
     };
     toggleAutoplay: {
+      payload: void;
+      response: PlayerActionResponse;
+    };
+    toggleVideo: {
       payload: void;
       response: PlayerActionResponse;
     };

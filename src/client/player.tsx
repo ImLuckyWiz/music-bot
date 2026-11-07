@@ -11,6 +11,7 @@ import {
   SearchIcon,
   SkipIcon,
   StopIcon,
+  VideoIcon,
   VolumeIcon,
 } from "./icons";
 import { Queue } from "./queue";
@@ -37,6 +38,7 @@ const PlayerPanel = ({ controller }: PlayerPanelProps) => {
     skip,
     stop,
     toggleAutoplay,
+    toggleVideo,
   } = controller;
   const [query, setQuery] = useState("");
   const [pendingQuery, setPendingQuery] = useState("");
@@ -310,6 +312,7 @@ const PlayerPanel = ({ controller }: PlayerPanelProps) => {
       </div>
 
       <div className="mb-controls">
+        <div className="mb-toggles">
         <button
           type="button"
           role="switch"
@@ -334,6 +337,31 @@ const PlayerPanel = ({ controller }: PlayerPanelProps) => {
           </span>
           <span>Autoplay</span>
         </button>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={player.videoEnabled}
+          className={`mb-autoplay-toggle ${player.videoEnabled ? "mb-autoplay-active" : ""}`}
+          title={
+            player.videoEnabled
+              ? "Video on: YouTube video is streamed with the audio (applies from the next track)"
+              : "Video off: audio only (applies from the next track)"
+          }
+          aria-label="Toggle video"
+          disabled={isBusy || !can.video}
+          onClick={toggleVideo}
+        >
+          <span
+            className={`mb-switch-track ${player.videoEnabled ? "mb-switch-active" : ""}`}
+          >
+            <span className="mb-switch-thumb" />
+          </span>
+          <span className="mb-autoplay-icon">
+            <VideoIcon size={14} />
+          </span>
+          <span>Video</span>
+        </button>
+        </div>
 
         <div className="mb-transport">
           <button

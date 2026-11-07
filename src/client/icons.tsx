@@ -107,6 +107,14 @@ const InfinityIcon = ({ size = 16 }: IconProps) => (
   </Icon>
 );
 
+/** lucide: video */
+const VideoIcon = ({ size = 14 }: IconProps) => (
+  <Icon size={size}>
+    <path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5" />
+    <rect x="2" y="6" width="14" height="12" rx="2" />
+  </Icon>
+);
+
 /** lucide: loader-2 */
 const LoaderIcon = ({ size = 14 }: IconProps) => (
   <Icon size={size}>
@@ -124,5 +132,6 @@ export {
   SearchIcon,
   SkipIcon,
   StopIcon,
+  VideoIcon,
   VolumeIcon,
 };

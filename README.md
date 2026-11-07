@@ -72,17 +72,18 @@ download leaves the working one untouched and playback is not interrupted.
 ## Settings
 
 - **Bitrate** — the audio bitrate for the stream (default `128k`).
-- **Stream Video** — stream the video of YouTube links (default on). Turn it
-  off for audio only.
 - **Max Resolution** — `480p`, `720p`, `1080p` or `1440p` (default `720p`). Anything
   above 1080p is VP9 only. Applies from the next track on.
-- **Limit to 30 fps** — prefer 30 fps or lower video (default on). Video is
+- **Limit to 30 fps** — prefer 30 fps or lower video (default off). Video is
   copied untouched, so 60 fps roughly doubles bandwidth and stutter risk.
-- **Chunked Input** — experimental, off by default. Fetches YouTube media in
-  10 MB ranged requests through a local proxy on `127.0.0.1`, with read-ahead
-  and automatic retries, instead of one long connection that YouTube may reset.
-  Falls back to a direct connection if the proxy cannot start for a track.
 - **Proxy URL** — optional proxy for YouTube requests.
+
+YouTube media is always fetched through a local proxy on `127.0.0.1` in short
+ranged requests with read-ahead and automatic retries (falling back to a direct
+connection if the proxy cannot start for a track).
+
+Video can be switched on or off by anyone in the voice channel with the **Video**
+toggle in the player panel (default on, applies from the next track).
 
 ## Screenshots
 

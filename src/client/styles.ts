@@ -111,8 +111,11 @@ const CSS = `
   display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
   padding: 12px 16px 16px;
 }
+.mb-toggles {
+  grid-column: 1; justify-self: start; display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+}
 .mb-autoplay-toggle {
-  grid-column: 1; justify-self: start; display: inline-flex; align-items: center; gap: 7px;
+  display: inline-flex; align-items: center; gap: 7px;
   padding: 4px 8px; border: 0; border-radius: 999px; background: rgba(255, 255, 255, 0.05);
   color: #a7a7a7; font: inherit; font-size: 11px; font-weight: 600; cursor: pointer;
   white-space: nowrap; transition: all 0.2s ease; user-select: none;

@@ -40,6 +40,7 @@ type ChannelStreamState = {
   queue: TQueueItem[];
   endAction: "none" | "next" | "stop";
   autoplay: boolean;
+  videoEnabled: boolean;
   lastPlayedVideoId: string | null;
   recentVideoIds: string[];
   prefetchedAutoplayTrack: TYtDlpTrackInfo | null;
@@ -74,6 +75,7 @@ const createInitialState = (): ChannelStreamState => ({
   queue: [],
   endAction: "none",
   autoplay: false,
+  videoEnabled: true,
   lastPlayedVideoId: null,
   recentVideoIds: [],
   prefetchedAutoplayTrack: null,
@@ -160,6 +162,7 @@ const emptyPlayerStateSnapshot = (): PlayerStateSnapshot => ({
   volume: DEFAULT_VOLUME,
   queue: [],
   autoplay: false,
+  videoEnabled: true,
 });
 
 const getPlayerStateSnapshot = (
@@ -183,6 +186,7 @@ const getPlayerStateSnapshot = (
     volume: state.volume,
     queue: buildQueueEntries(state),
     autoplay: state.autoplay,
+    videoEnabled: state.videoEnabled,
   };
 };
 

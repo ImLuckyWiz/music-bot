@@ -55,9 +55,11 @@ jobs:
           META="dist/${VERSION}.json"
 
           cat << 'EOF' > release_notes.md
-          ### Music Bot Zero Initial Burst Optimization v${VERSION}
-          - **Disable Readrate Initial Burst**: Sets `INPUT_INITIAL_BURST_SECONDS = 0` (`-readrate_initial_burst 0`) in FFmpeg inputs. Disabling the 1-second initial burst prevents flooding RTP packets onto the network right after the initial keyframe, preventing packet loss and eliminating video stall/freeze before the next keyframe.
-          - **Pre-Roll Viewer Setup**: Retains 1.5s setup delay for clients to attach before streaming.
+          ### Music Bot In-Panel Video Toggle & Proxy Streamlining v${VERSION}
+          - **In-Panel Video Toggle**: Replaces static plugin-wide video settings with a live per-channel Video toggle button right in the music player panel (`toggleVideo` action).
+          - **Unconditional Chunk Proxy**: Streamlines YouTube streaming by standardizing on the local chunk proxy with 2MB pipelined read-ahead for all YouTube tracks.
+          - **Keyframe Setup Delay**: Extended viewer setup delay to 2000ms before FFmpeg starts to guarantee all clients attach in time for the keyframe.
+          - **30fps Preference Setting**: Set `limitFps` default to false (unconstrained fps by default, opt-in to 30fps limiter).
           - **Built for Sharkord**: Unpacks to `music-bot/` containing `manifest.json`, `client/index.js`, and `server/index.js`.
           EOF
 
@@ -68,6 +70,6 @@ jobs:
           else
             echo "Creating new release $TAG..."
             gh release create "$TAG" "$ARCHIVE" "$META" \
-              --title "v${VERSION} - Zero Initial Burst Optimization" \
+              --title "v${VERSION} - In-Panel Video Toggle & Proxy Streamlining" \
               --notes-file release_notes.md
           fi

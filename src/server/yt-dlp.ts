@@ -376,7 +376,7 @@ const resolveYouTubeTrack = async (
     ytDlpPath,
     ...base,
     "-f",
-    maxHeight > 0 ? buildVideoFormatSelector(maxHeight, options.limitFps ?? true) : AUDIO_FORMAT_SELECTOR,
+    maxHeight > 0 ? buildVideoFormatSelector(maxHeight, options.limitFps ?? false) : AUDIO_FORMAT_SELECTOR,
     "--dump-single-json",
     "--skip-download",
     sourceUrl,
