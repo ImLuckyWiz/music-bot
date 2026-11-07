@@ -57,6 +57,10 @@ type TSharkord = {
       payload: void;
       response: PlayerActionResponse;
     };
+    getSearchSuggestions: {
+      payload: { query: string };
+      response: string[];
+    };
   };
   commands: {
     "update-ffmpeg": {

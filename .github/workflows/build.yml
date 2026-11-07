@@ -56,9 +56,11 @@ jobs:
 
           cat << 'EOF' > release_notes.md
           ### Music Bot Fast Streaming & Autoplay v${VERSION}
-          - **Instant Loading Feedback**: Immediate loading spinner and query feedback when starting playback from idle so you know it's actively fetching.
-          - **Queue Resolving State**: Enqueued tracks immediately display "Fetching song info..." with an animated spinner until metadata is resolved.
-          - **YouTube Autoplay**: Automatically queues recommended tracks based on YouTube's algorithmic mix when your queue finishes.
+          - **YouTube Search Suggestions**: Real-time autocomplete suggestions powered by YouTube's suggest query API as you type song names.
+          - **Smart Suggestion Handling**: Instant client/server query caching, 180ms debounce, length filter (> 2 chars), and keyboard navigation (Arrow Up/Down/Enter/Escape).
+          - **Instant Loading Feedback**: Immediate loading spinner and query feedback when starting playback from idle.
+          - **Queue Resolving State**: Enqueued tracks immediately display "Fetching song info..." with an animated spinner.
+          - **YouTube Autoplay**: Automatically queues recommended tracks based on YouTube's algorithmic mix.
           - **Autoplay Toggle**: Spotify-styled smooth switch toggle directly in the music player topbar widget.
           - **Built for Sharkord**: Unpacks to \`music-bot/\` containing \`manifest.json\`, \`client/index.js\`, and \`server/index.js\`.
           EOF
@@ -70,6 +72,6 @@ jobs:
           else
             echo "Creating new release $TAG..."
             gh release create "$TAG" "$ARCHIVE" "$META" \
-              --title "v${VERSION} - Loading Feedback & Autoplay" \
+              --title "v${VERSION} - YouTube Search Suggestions" \
               --notes-file release_notes.md
           fi

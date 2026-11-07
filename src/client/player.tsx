@@ -1,6 +1,6 @@
 import { Button, Popover, PopoverContent, PopoverTrigger } from "@sharkord/ui";
 import type { CSSProperties } from "react";
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import {
   CloseIcon,
   InfinityIcon,
@@ -14,7 +14,7 @@ import {
   VolumeIcon,
 } from "./icons";
 import { Queue } from "./queue";
-import { useUserName } from "./store";
+import { callAction, useUserName } from "./store";
 import { panelStyle } from "./styles";
 import { formatDuration, usePlayer } from "./use-player";
 
@@ -40,6 +40,12 @@ const PlayerPanel = ({ controller }: PlayerPanelProps) => {
   } = controller;
   const [query, setQuery] = useState("");
   const [pendingQuery, setPendingQuery] = useState("");
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(-1);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+  const suggestionsCache = useRef<Map<string, string[]>>(new Map());
+
   // held locally while dragging, so the slider does not fight its own pushes
   const [volume, setVolumeDraft] = useState(player.volume);
 
@@ -53,20 +59,79 @@ const PlayerPanel = ({ controller }: PlayerPanelProps) => {
     }
   }, [isBusy, player.streamStarting]);
 
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!can.play || trimmed.length <= 2 || /^https?:\/\//.test(trimmed)) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      setSelectedIndex(-1);
+      return;
+    }
+
+    const cacheKey = trimmed.toLowerCase();
+    const cached = suggestionsCache.current.get(cacheKey);
+    if (cached) {
+      setSuggestions(cached);
+      setShowSuggestions(cached.length > 0);
+      setSelectedIndex(-1);
+      return;
+    }
+
+    let active = true;
+    const timer = window.setTimeout(async () => {
+      try {
+        const results = await callAction("getSearchSuggestions", { query: trimmed });
+        if (active) {
+          suggestionsCache.current.set(cacheKey, results);
+          setSuggestions(results);
+          setShowSuggestions(results.length > 0);
+          setSelectedIndex(-1);
+        }
+      } catch {
+        if (active) {
+          setSuggestions([]);
+          setShowSuggestions(false);
+          setSelectedIndex(-1);
+        }
+      }
+    }, 180);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [query, can.play]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        searchContainerRef.current &&
+        !searchContainerRef.current.contains(event.target as Node)
+      ) {
+        setShowSuggestions(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const isPlaying = player.streamActive;
   const isLoading =
     player.streamStarting || (isBusy && !isPlaying && player.queue.length === 0);
   const canSubmit = query.trim() !== "" && !isBusy && can.play;
 
-  const submit = () => {
-    if (!canSubmit) return;
+  const submit = (overrideQuery?: string) => {
+    const target = (overrideQuery ?? query).trim();
+    if (!target || isBusy || !can.play) return;
 
-    const trimmed = query.trim();
     if (!isPlaying) {
-      setPendingQuery(trimmed);
+      setPendingQuery(target);
     }
-    play(trimmed);
+    play(target);
     setQuery("");
+    setShowSuggestions(false);
+    setSelectedIndex(-1);
   };
 
   const title = isPlaying
@@ -77,7 +142,7 @@ const PlayerPanel = ({ controller }: PlayerPanelProps) => {
 
   return (
     <div className="mb-panel">
-      <div className="mb-search">
+      <div className="mb-search" ref={searchContainerRef}>
         <div className="mb-search-field">
           <SearchIcon />
           <input
@@ -86,8 +151,40 @@ const PlayerPanel = ({ controller }: PlayerPanelProps) => {
             placeholder="Search or paste a link"
             aria-label="Search or paste a link"
             disabled={!can.play}
-            onChange={(event) => setQuery(event.target.value)}
+            onFocus={() => {
+              if (suggestions.length > 0) setShowSuggestions(true);
+            }}
+            onChange={(event) => {
+              setQuery(event.target.value);
+            }}
             onKeyDown={(event) => {
+              if (showSuggestions && suggestions.length > 0) {
+                if (event.key === "ArrowDown") {
+                  event.preventDefault();
+                  setSelectedIndex((prev) =>
+                    prev < suggestions.length - 1 ? prev + 1 : 0
+                  );
+                  return;
+                }
+                if (event.key === "ArrowUp") {
+                  event.preventDefault();
+                  setSelectedIndex((prev) =>
+                    prev > 0 ? prev - 1 : suggestions.length - 1
+                  );
+                  return;
+                }
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  setShowSuggestions(false);
+                  return;
+                }
+                if (event.key === "Enter" && selectedIndex >= 0) {
+                  event.preventDefault();
+                  submit(suggestions[selectedIndex]);
+                  return;
+                }
+              }
+
               if (event.key !== "Enter") return;
 
               event.preventDefault();
@@ -100,7 +197,7 @@ const PlayerPanel = ({ controller }: PlayerPanelProps) => {
           type="button"
           className="mb-add"
           disabled={(!canSubmit && !isBusy) || isBusy}
-          onClick={submit}
+          onClick={() => submit()}
         >
           {isBusy ? (
             <span className="mb-btn-loading">
@@ -113,6 +210,30 @@ const PlayerPanel = ({ controller }: PlayerPanelProps) => {
             "Play"
           )}
         </button>
+
+        {showSuggestions && suggestions.length > 0 && (
+          <div className="mb-suggestions" role="listbox">
+            {suggestions.map((item, index) => (
+              <button
+                key={item}
+                type="button"
+                role="option"
+                aria-selected={index === selectedIndex}
+                className={`mb-suggestion-item ${
+                  index === selectedIndex ? "mb-suggestion-active" : ""
+                }`}
+                onMouseEnter={() => setSelectedIndex(index)}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  submit(item);
+                }}
+              >
+                <SearchIcon size={14} className="mb-suggestion-icon" />
+                <span className="mb-suggestion-text">{item}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="mb-hero">

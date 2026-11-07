@@ -154,6 +154,58 @@ const normalizePlayableSource = (query: string): string => {
   return trimmedQuery;
 };
 
+const suggestionCache = new Map<string, { timestamp: number; data: string[] }>();
+const SUGGESTION_CACHE_TTL_MS = 10 * 60 * 1000;
+
+const fetchSearchSuggestions = async (query: string): Promise<string[]> => {
+  const q = query.trim();
+
+  if (q.length <= 2 || /^https?:\/\//.test(q)) {
+    return [];
+  }
+
+  const cacheKey = q.toLowerCase();
+  const cached = suggestionCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < SUGGESTION_CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  try {
+    const url = `https://suggestqueries.google.com/complete/search?client=firefox&ds=yt&q=${encodeURIComponent(q)}`;
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Firefox/120.0",
+        Accept: "application/json, text/plain, */*",
+      },
+      signal: AbortSignal.timeout(2000),
+    });
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const json = (await response.json()) as unknown;
+    if (Array.isArray(json) && Array.isArray(json[1])) {
+      const results = json[1]
+        .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+        .slice(0, 7);
+
+      suggestionCache.set(cacheKey, { timestamp: Date.now(), data: results });
+
+      if (suggestionCache.size > 200) {
+        const oldestKey = suggestionCache.keys().next().value;
+        if (oldestKey) suggestionCache.delete(oldestKey);
+      }
+
+      return results;
+    }
+
+    return [];
+  } catch {
+    return [];
+  }
+};
+
 const buildActionResult = (
   ctx: TMusicContext,
   message: string,
@@ -534,6 +586,15 @@ const onLoad = async (ctx: TMusicContext) => {
     description: "Reads what is playing in the caller's voice channel",
     executes: async (invoker) =>
       getPlayerStateSnapshot(invoker.currentVoiceChannelId),
+  });
+
+  ctx.actions.register({
+    name: "getSearchSuggestions",
+    description: "Fetches YouTube search suggestions for a query",
+    executes: async (_invoker, payload) => {
+      const query = typeof payload?.query === "string" ? payload.query : "";
+      return fetchSearchSuggestions(query);
+    },
   });
 
   ctx.actions.register({

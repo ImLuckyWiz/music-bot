@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 type IconProps = {
   size?: number;
+  className?: string;
 };
 
 type LucideIconProps = IconProps & {
@@ -10,7 +11,12 @@ type LucideIconProps = IconProps & {
   fill?: string;
 };
 
-const Icon = ({ size = 16, fill = "none", children }: LucideIconProps) => (
+const Icon = ({
+  size = 16,
+  fill = "none",
+  className,
+  children,
+}: LucideIconProps) => (
   <svg
     width={size}
     height={size}
@@ -21,14 +27,15 @@ const Icon = ({ size = 16, fill = "none", children }: LucideIconProps) => (
     strokeLinecap="round"
     strokeLinejoin="round"
     aria-hidden="true"
+    className={className}
   >
     {children}
   </svg>
 );
 
 /** lucide: music */
-const NoteIcon = ({ size = 20 }: IconProps) => (
-  <Icon size={size}>
+const NoteIcon = ({ size = 20, className }: IconProps) => (
+  <Icon size={size} className={className}>
     <path d="M9 18V5l12-2v13" />
     <circle cx="6" cy="18" r="3" />
     <circle cx="18" cy="16" r="3" />
@@ -36,8 +43,8 @@ const NoteIcon = ({ size = 20 }: IconProps) => (
 );
 
 /** lucide: search */
-const SearchIcon = ({ size = 16 }: IconProps) => (
-  <Icon size={size}>
+const SearchIcon = ({ size = 16, className }: IconProps) => (
+  <Icon size={size} className={className}>
     <path d="m21 21-4.34-4.34" />
     <circle cx="11" cy="11" r="8" />
   </Icon>

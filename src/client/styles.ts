@@ -6,7 +6,7 @@ const CSS = `
 .mb-panel { color: #fff; font-size: 13px; }
 .mb-panel *, .mb-panel *::before, .mb-panel *::after { box-sizing: border-box; }
 
-.mb-search { display: flex; align-items: center; gap: 8px; padding: 12px; }
+.mb-search { position: relative; display: flex; align-items: center; gap: 8px; padding: 12px; }
 .mb-search-field {
   flex: 1; display: flex; align-items: center; gap: 10px; height: 38px;
   padding: 0 14px; border-radius: 999px; background: #242424;
@@ -20,6 +20,34 @@ const CSS = `
 }
 .mb-search-input::placeholder { color: #a7a7a7; }
 .mb-search-input:disabled { cursor: not-allowed; }
+
+.mb-suggestions {
+  position: absolute; top: calc(100% - 4px); left: 12px; right: 12px;
+  z-index: 99; background: #1a1a1a; border: 1px solid #333333;
+  border-radius: 10px; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.7);
+  overflow: hidden; max-height: 220px; overflow-y: auto; padding: 4px;
+}
+.mb-suggestions::-webkit-scrollbar { width: 6px; }
+.mb-suggestions::-webkit-scrollbar-thumb { background: #444444; border-radius: 3px; }
+.mb-suggestions::-webkit-scrollbar-thumb:hover { background: #555555; }
+
+.mb-suggestion-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 8px 10px; background: transparent; border: 0; border-radius: 6px;
+  color: #dcdcdc; font: inherit; font-size: 13px; text-align: left;
+  cursor: pointer; transition: background 0.12s ease, color 0.12s ease;
+}
+.mb-suggestion-item:hover, .mb-suggestion-item.mb-suggestion-active {
+  background: #282828; color: ${ACCENT};
+}
+.mb-suggestion-icon { color: #777777; flex: none; }
+.mb-suggestion-item:hover .mb-suggestion-icon,
+.mb-suggestion-item.mb-suggestion-active .mb-suggestion-icon {
+  color: ${ACCENT};
+}
+.mb-suggestion-text {
+  flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 
 .mb-add {
   flex: none; height: 38px; padding: 0 18px; border: 0; border-radius: 999px;
