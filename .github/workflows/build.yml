@@ -55,10 +55,10 @@ jobs:
           META="dist/${VERSION}.json"
 
           cat << 'EOF' > release_notes.md
-          ### Music Bot HTTPS Protocol & Codec Match Optimization v${VERSION}
-          - **HTTPS-Only Protocol Filter**: Enforces `protocol=https` in format selectors so YouTube's HLS (m3u8) copies aren't picked up (which would bypass the chunk proxy and start video seconds after audio).
-          - **VP9 Short Name Matching**: Matches both `vp09` and `vp9` format identifiers across all resolution selector passes.
-          - **Diagnostics Format Logging**: Reports format ID and protocol alongside resolution and codec during track resolution.
+          ### Music Bot Keyframe Pre-Roll Stream Announcement v${VERSION}
+          - **Pre-Roll Viewer Setup Delay**: Announces video stream 1.5s prior to FFmpeg starting so clients attach before the initial keyframe leaves, eliminating black video tiles on startup.
+          - **Safe Abort on Pre-Roll Interruption**: Checks for producer closure before spawning FFmpeg if playback was cancelled during setup.
+          - **Robust Track Height Fallback**: Safely falls back on `resolvedMaxHeight` with optional chaining when sizing re-encode bitrates.
           - **Built for Sharkord**: Unpacks to `music-bot/` containing `manifest.json`, `client/index.js`, and `server/index.js`.
           EOF
 
@@ -69,6 +69,6 @@ jobs:
           else
             echo "Creating new release $TAG..."
             gh release create "$TAG" "$ARCHIVE" "$META" \
-              --title "v${VERSION} - Protocol & Codec Optimization" \
+              --title "v${VERSION} - Keyframe Pre-Roll Announcement" \
               --notes-file release_notes.md
           fi

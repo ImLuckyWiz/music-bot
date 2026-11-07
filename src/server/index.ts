@@ -356,6 +356,9 @@ const triggerPrefetchNext = (
   }
 };
 
+// how long viewers get to attach to a new video stream before FFmpeg starts
+const VIDEO_VIEWER_SETUP_DELAY_MS = 1500;
+
 const startMusicStream = async (
   ctx: TMusicContext,
   channelId: number,
@@ -491,6 +494,32 @@ const startMusicStream = async (
 
     ctx.logger.log("Final source URL:", sourceUrl);
 
+    state.streamHandle = ctx.voice.createStream({
+      key: "music",
+      channelId,
+      title: trackInfo?.title ?? sourceUrl,
+      avatarUrl: "https://i.imgur.com/uVBNUK9.png",
+      bannerUrl: trackInfo?.thumbnailUrl,
+      producers: {
+        audio: state.audioProducer,
+        video: state.videoProducer ?? undefined,
+      },
+    });
+
+    // Announce the stream before FFmpeg sends anything. Video is forwarded
+    // as-is, so the first keyframe leaves at t=0 and the next one can be several
+    // seconds away; a viewer that is still attaching when it goes by sees a black
+    // tile until then (FFmpeg cannot answer keyframe requests in copy mode).
+    if (state.videoProducer) {
+      await new Promise<void>((resolve) =>
+        setTimeout(resolve, VIDEO_VIEWER_SETUP_DELAY_MS),
+      );
+
+      if (state.audioProducer?.closed || state.videoProducer?.closed) {
+        throw new Error("The stream was stopped while it was starting.");
+      }
+    }
+
     const result = await spawnMusicStream({
       sourceUrl,
       audioPayloadType: 111,
@@ -509,7 +538,7 @@ const startMusicStream = async (
       proxy: options.proxy,
       chunkedInput: options.chunkedInput,
       limitFps: options.limitFps,
-      videoMaxHeight: trackInfo.resolvedMaxHeight,
+      videoMaxHeight: trackInfo?.resolvedMaxHeight,
       preResolvedTrack: trackInfo,
       log: ctx.logger.log,
       error: ctx.logger.error,
@@ -535,18 +564,6 @@ const startMusicStream = async (
 
     // tracked right away, so a failure below still tears ffmpeg and its proxy down
     state.ffmpegProcess = result.process;
-
-    state.streamHandle = ctx.voice.createStream({
-      key: "music",
-      channelId,
-      title: result.title,
-      avatarUrl: "https://i.imgur.com/uVBNUK9.png",
-      bannerUrl: result.thumbnailUrl,
-      producers: {
-        audio: state.audioProducer,
-        video: state.videoProducer ?? undefined,
-      },
-    });
 
     state.producerCloseHandler = () => cleanupChannel(ctx, channelId);
 
