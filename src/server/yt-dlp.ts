@@ -7,6 +7,15 @@ type TYtDlpMetadataResult = {
   durationSeconds?: number;
 };
 
+type TYtDlpTrackInfo = {
+  title: string;
+  thumbnailUrl?: string;
+  durationSeconds?: number;
+  streamUrl?: string;
+  httpHeaders?: Record<string, string>;
+  webpageUrl?: string;
+};
+
 type TYtDlpOptions = {
   log: (...messages: unknown[]) => void;
   debug: (...messages: unknown[]) => void;
@@ -149,10 +158,10 @@ const runYtDlp = async (
   }
 };
 
-const parseYtDlpMetadata = (
+const parseYtDlpTrackInfo = (
   stdout: string,
   sourceUrl: string,
-): TYtDlpMetadataResult => {
+): TYtDlpTrackInfo => {
   const jsonText = stdout
     .trim()
     .split(/\r?\n/)
@@ -167,10 +176,16 @@ const parseYtDlpMetadata = (
     title?: unknown;
     thumbnail?: unknown;
     duration?: unknown;
+    url?: unknown;
+    webpage_url?: unknown;
+    http_headers?: unknown;
     entries?: Array<{
       title?: unknown;
       thumbnail?: unknown;
       duration?: unknown;
+      url?: unknown;
+      webpage_url?: unknown;
+      http_headers?: unknown;
     }>;
   };
 
@@ -193,32 +208,69 @@ const parseYtDlpMetadata = (
       ? Math.max(0, Math.floor(metadata.duration))
       : undefined;
 
-  return { title, thumbnailUrl, durationSeconds };
+  const streamUrl =
+    typeof metadata.url === "string" && metadata.url.trim().startsWith("http")
+      ? metadata.url.trim()
+      : undefined;
+
+  const webpageUrl =
+    typeof metadata.webpage_url === "string" && metadata.webpage_url.trim()
+      ? metadata.webpage_url.trim()
+      : undefined;
+
+  const httpHeaders =
+    metadata.http_headers && typeof metadata.http_headers === "object"
+      ? (metadata.http_headers as Record<string, string>)
+      : undefined;
+
+  return {
+    title,
+    thumbnailUrl,
+    durationSeconds,
+    streamUrl,
+    webpageUrl,
+    httpHeaders,
+  };
+};
+
+const resolveYouTubeTrack = async (
+  sourceUrl: string,
+  options: TYtDlpOptions,
+): Promise<TYtDlpTrackInfo> => {
+  const ytDlpPath = getYtDlpBinaryPath();
+  const base = await getYtDlpBaseArgs(options);
+  const cmd = [
+    ytDlpPath,
+    ...base,
+    "-f",
+    "bestaudio[ext=webm]/bestaudio/best",
+    "--dump-single-json",
+    "--skip-download",
+    sourceUrl,
+  ];
+
+  options.log("Resolving YouTube track via yt-dlp:", sourceUrl);
+
+  const res = await runYtDlp(cmd, "track resolution", options);
+
+  if (res.exitCode !== 0) {
+    throw new Error(`yt-dlp track resolution failed (exit ${res.exitCode})`);
+  }
+
+  return parseYtDlpTrackInfo(res.stdout, sourceUrl);
 };
 
 const fetchYouTubeMetadata = async (
   sourceUrl: string,
   options: TYtDlpOptions,
 ): Promise<TYtDlpMetadataResult> => {
-  const ytDlpPath = getYtDlpBinaryPath();
-  const base = await getYtDlpBaseArgs(options);
-  const cmd = [
-    ytDlpPath,
-    ...base,
-    "--dump-single-json",
-    "--skip-download",
-    sourceUrl,
-  ];
+  const track = await resolveYouTubeTrack(sourceUrl, options);
 
-  options.log("Fetching YouTube metadata via yt-dlp:", sourceUrl);
-
-  const res = await runYtDlp(cmd, "metadata fetch", options);
-
-  if (res.exitCode !== 0) {
-    throw new Error(`yt-dlp metadata fetch failed (exit ${res.exitCode})`);
-  }
-
-  return parseYtDlpMetadata(res.stdout, sourceUrl);
+  return {
+    title: track.title,
+    thumbnailUrl: track.thumbnailUrl,
+    durationSeconds: track.durationSeconds,
+  };
 };
 
 const spawnYouTubeAudioPipe = async (
@@ -232,7 +284,7 @@ const spawnYouTubeAudioPipe = async (
     ytDlpPath,
     ...base,
     "-f",
-    "bestaudio/best",
+    "bestaudio[ext=webm]/bestaudio/best",
     "-o",
     "-",
     sourceUrl,
@@ -252,6 +304,7 @@ export {
   fetchYouTubeMetadata,
   isYouTubeUrl,
   logYtDlpLine,
+  resolveYouTubeTrack,
   spawnYouTubeAudioPipe,
 };
-export type { TYtDlpMetadataResult, TYtDlpOptions };
+export type { TYtDlpMetadataResult, TYtDlpOptions, TYtDlpTrackInfo };

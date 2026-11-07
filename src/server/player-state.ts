@@ -7,10 +7,13 @@ import type {
 } from "@sharkord/plugin-sdk";
 import type { PlayerQueueEntry, PlayerStateSnapshot } from "../contract";
 import type { TMusicStreamResult } from "./ffmpeg";
+import type { TYtDlpTrackInfo } from "./yt-dlp";
 
 type TQueueItem = {
   sourceUrl: string;
   invokerUserId: number;
+  resolvedTrack?: TYtDlpTrackInfo | null;
+  prefetchPromise?: Promise<TYtDlpTrackInfo> | null;
 };
 
 type ChannelStreamState = {
@@ -120,7 +123,7 @@ const removeQueueItem = (
 const buildQueueEntries = (state: ChannelStreamState): PlayerQueueEntry[] =>
   state.queue.map((item, index) => ({
     position: index + 1,
-    label: formatSourceLabel(item.sourceUrl),
+    label: item.resolvedTrack?.title ?? formatSourceLabel(item.sourceUrl),
     invokerUserId: item.invokerUserId,
   }));
 
@@ -177,4 +180,4 @@ export {
   removeQueueItem,
   takeNextFromQueue,
 };
-export type { ChannelStreamState };
+export type { ChannelStreamState, TQueueItem };

@@ -1,9 +1,10 @@
 import { getFfmpegBinaryPath } from "./paths";
 import {
-  fetchYouTubeMetadata,
   isYouTubeUrl,
   logYtDlpLine,
+  resolveYouTubeTrack,
   spawnYouTubeAudioPipe,
+  type TYtDlpTrackInfo,
 } from "./yt-dlp";
 
 type TSpawnedStreamProcess = {
@@ -28,6 +29,7 @@ type TMusicOptions = {
   volume?: number; // 0-100, default 100
   bitrate?: string;
   proxy?: string;
+  preResolvedTrack?: TYtDlpTrackInfo;
   log: (...messages: unknown[]) => void;
   error: (...messages: unknown[]) => void;
   debug: (...messages: unknown[]) => void;
@@ -137,32 +139,70 @@ const spawnMusicStream = async (
   let ytDlpProcess: ReturnType<typeof Bun.spawn> | null = null;
 
   if (isYouTubeUrl(options.sourceUrl)) {
-    options.log("Using yt-dlp -> ffmpeg pipe mode for YouTube source");
+    const trackInfo =
+      options.preResolvedTrack ??
+      (await resolveYouTubeTrack(options.sourceUrl, {
+        log: options.log,
+        error: options.error,
+        debug: options.debug,
+        proxy: options.proxy,
+      }));
 
-    const metadata = await fetchYouTubeMetadata(options.sourceUrl, {
-      log: options.log,
-      error: options.error,
-      debug: options.debug,
-      proxy: options.proxy,
-    });
+    title = trackInfo.title;
+    thumbnailUrl = trackInfo.thumbnailUrl;
+    durationSeconds = trackInfo.durationSeconds;
 
-    title = metadata.title;
-    thumbnailUrl = metadata.thumbnailUrl;
-    durationSeconds = metadata.durationSeconds;
+    if (trackInfo.streamUrl) {
+      options.log("Using direct stream URL for YouTube audio");
+      inputSource = trackInfo.streamUrl;
+      inputArgs = [
+        "-reconnect",
+        "1",
+        "-reconnect_streamed",
+        "1",
+        "-reconnect_delay_max",
+        "5",
+      ];
 
-    ytDlpProcess = await spawnYouTubeAudioPipe(options.sourceUrl, {
-      log: options.log,
-      error: options.error,
-      debug: options.debug,
-      proxy: options.proxy,
-    });
+      if (options.proxy) {
+        inputArgs.push("-http_proxy", options.proxy);
+      }
 
-    if (!ytDlpProcess.stdout) {
-      throw new Error("yt-dlp pipe is not available");
+      if (trackInfo.httpHeaders?.["User-Agent"]) {
+        inputArgs.push("-user_agent", trackInfo.httpHeaders["User-Agent"]);
+      }
+    } else {
+      options.log("Direct stream URL unavailable, falling back to yt-dlp pipe");
+      ytDlpProcess = await spawnYouTubeAudioPipe(
+        trackInfo.webpageUrl ?? options.sourceUrl,
+        {
+          log: options.log,
+          error: options.error,
+          debug: options.debug,
+          proxy: options.proxy,
+        },
+      );
+
+      if (!ytDlpProcess.stdout) {
+        throw new Error("yt-dlp pipe is not available");
+      }
+
+      inputSource = "pipe:0";
+      inputArgs = [];
     }
+  } else {
+    inputArgs = [
+      "-reconnect",
+      "1",
+      "-reconnect_streamed",
+      "1",
+      "-reconnect_delay_max",
+      "5",
+    ];
 
-    inputSource = "pipe:0";
-    inputArgs = [];
+    if (options.proxy) {
+      inputArgs.push("-http_proxy", options.proxy);
+    }
   }
 
   const volumeLevel = Math.min(100, Math.max(0, options.volume ?? 100)) / 100;

@@ -25,6 +25,11 @@ import {
   removeQueueItem,
   takeNextFromQueue,
 } from "./player-state";
+import {
+  isYouTubeUrl,
+  resolveYouTubeTrack,
+  type TYtDlpTrackInfo,
+} from "./yt-dlp";
 
 type TMusicContext = PluginContext<TSharkord>;
 
@@ -156,12 +161,56 @@ const buildActionResult = (
   return { message, player: getPlayerStateSnapshot(channelId) };
 };
 
+const triggerPrefetchNext = (
+  ctx: TMusicContext,
+  channelId: number,
+  options: PlaybackSettings,
+): void => {
+  const state = getExistingState(channelId);
+
+  if (!state) return;
+
+  const nextItem = state.queue[0];
+
+  if (!nextItem) return;
+  if (nextItem.resolvedTrack || nextItem.prefetchPromise) return;
+
+  if (!isYouTubeUrl(nextItem.sourceUrl)) {
+    return;
+  }
+
+  ctx.logger.debug("Prefetching next track in queue:", nextItem.sourceUrl);
+
+  const prefetchPromise = resolveYouTubeTrack(nextItem.sourceUrl, {
+    log: ctx.logger.log,
+    error: ctx.logger.error,
+    debug: ctx.logger.debug,
+    proxy: options.proxy,
+  })
+    .then((trackInfo) => {
+      nextItem.resolvedTrack = trackInfo;
+      ctx.logger.log("Prefetched next track:", trackInfo.title);
+      publishPlayerState(ctx, channelId);
+      return trackInfo;
+    })
+    .catch((err: unknown) => {
+      ctx.logger.error("Failed to prefetch next track", err);
+      throw err;
+    })
+    .finally(() => {
+      nextItem.prefetchPromise = null;
+    });
+
+  nextItem.prefetchPromise = prefetchPromise;
+};
+
 const startMusicStream = async (
   ctx: TMusicContext,
   channelId: number,
   sourceUrl: string,
   options: PlaybackSettings,
   invokerUserId: number,
+  preResolvedTrack?: TYtDlpTrackInfo,
 ): Promise<string> => {
   const state = getState(channelId);
 
@@ -228,6 +277,7 @@ const startMusicStream = async (
       volume: state.volume,
       bitrate: options.bitrate,
       proxy: options.proxy,
+      preResolvedTrack,
       log: ctx.logger.log,
       error: ctx.logger.error,
       debug: ctx.logger.debug,
@@ -275,6 +325,7 @@ const startMusicStream = async (
     state.endAction = "none";
 
     publishPlayerState(ctx, channelId);
+    triggerPrefetchNext(ctx, channelId, options);
 
     return `Now playing: ${result.title}`;
   } catch (err) {
@@ -298,12 +349,21 @@ const playNextInQueue = async (
     return "Queue is empty.";
   }
 
+  let preResolved = nextItem.resolvedTrack ?? undefined;
+
+  if (!preResolved && nextItem.prefetchPromise) {
+    try {
+      preResolved = await nextItem.prefetchPromise;
+    } catch {}
+  }
+
   return startMusicStream(
     ctx,
     channelId,
     nextItem.sourceUrl,
     options,
     nextItem.invokerUserId,
+    preResolved,
   );
 };
 
@@ -374,6 +434,8 @@ const onLoad = async (ctx: TMusicContext) => {
       if (state.streamActive || state.streamStarting) {
         const position = enqueueSource(channelId, sourceUrl, invoker.userId);
 
+        triggerPrefetchNext(ctx, channelId, getPlaybackSettings());
+
         return buildActionResult(
           ctx,
           `Added to queue (#${position}): ${formatSourceLabel(sourceUrl)}`,
@@ -407,6 +469,8 @@ const onLoad = async (ctx: TMusicContext) => {
       if (!removedItem) {
         throw new Error("Queue item not found.");
       }
+
+      triggerPrefetchNext(ctx, channelId, getPlaybackSettings());
 
       return buildActionResult(
         ctx,
@@ -470,18 +534,28 @@ const onLoad = async (ctx: TMusicContext) => {
       }
 
       if (!state.streamActive) {
+        let preResolved = selectedItem.resolvedTrack ?? undefined;
+
+        if (!preResolved && selectedItem.prefetchPromise) {
+          try {
+            preResolved = await selectedItem.prefetchPromise;
+          } catch {}
+        }
+
         const message = await startMusicStream(
           ctx,
           channelId,
           selectedItem.sourceUrl,
           getPlaybackSettings(),
           selectedItem.invokerUserId,
+          preResolved,
         );
 
         return buildActionResult(ctx, message, channelId);
       }
 
       state.queue.unshift(selectedItem);
+      triggerPrefetchNext(ctx, channelId, getPlaybackSettings());
       state.endAction = "next";
       cleanupChannel(ctx, channelId);
 
