@@ -8,12 +8,19 @@ type TYtDlpMetadataResult = {
 };
 
 type TYtDlpTrackInfo = {
+  id?: string;
   title: string;
   thumbnailUrl?: string;
   durationSeconds?: number;
   streamUrl?: string;
   httpHeaders?: Record<string, string>;
   webpageUrl?: string;
+};
+
+type TRelatedTrack = {
+  id: string;
+  title: string;
+  url: string;
 };
 
 type TYtDlpOptions = {
@@ -173,6 +180,7 @@ const parseYtDlpTrackInfo = (
   }
 
   const parsed = JSON.parse(jsonText) as {
+    id?: unknown;
     title?: unknown;
     thumbnail?: unknown;
     duration?: unknown;
@@ -180,6 +188,7 @@ const parseYtDlpTrackInfo = (
     webpage_url?: unknown;
     http_headers?: unknown;
     entries?: Array<{
+      id?: unknown;
       title?: unknown;
       thumbnail?: unknown;
       duration?: unknown;
@@ -192,6 +201,11 @@ const parseYtDlpTrackInfo = (
   const metadata = Array.isArray(parsed.entries)
     ? (parsed.entries.find(Boolean) ?? parsed)
     : parsed;
+
+  const id =
+    typeof metadata.id === "string" && metadata.id.trim()
+      ? metadata.id.trim()
+      : extractYouTubeVideoId(sourceUrl) ?? undefined;
 
   const title =
     typeof metadata.title === "string" && metadata.title.trim()
@@ -224,6 +238,7 @@ const parseYtDlpTrackInfo = (
       : undefined;
 
   return {
+    id,
     title,
     thumbnailUrl,
     durationSeconds,
@@ -300,11 +315,124 @@ const spawnYouTubeAudioPipe = async (
   });
 };
 
+const extractYouTubeVideoId = (url: string): string | null => {
+  const match = url.match(
+    /(?:v=|youtu\.be\/|embed\/|shorts\/|watch\?.*v=)([a-zA-Z0-9_-]{11})/,
+  );
+  return match ? match[1] ?? null : null;
+};
+
+const fetchYouTubeRelatedTracks = async (
+  seedUrlOrId: string,
+  options: TYtDlpOptions,
+): Promise<TRelatedTrack[]> => {
+  const videoId = extractYouTubeVideoId(seedUrlOrId) ?? seedUrlOrId;
+  const isId = /^[a-zA-Z0-9_-]{11}$/.test(videoId);
+
+  const ytDlpPath = getYtDlpBinaryPath();
+  const base = await getYtDlpBaseArgs(options);
+
+  // 1. Try YouTube Mix/Radio URL if we have a valid 11-char videoId
+  if (isId) {
+    const mixUrl = `https://www.youtube.com/watch?v=${videoId}&list=RD${videoId}`;
+    options.log(`[yt-dlp] Fetching YouTube Mix recommendations for ${videoId}`);
+
+    try {
+      const cmd = [
+        ytDlpPath,
+        ...base,
+        "--flat-playlist",
+        "--dump-json",
+        "--playlist-items",
+        "2-15",
+        mixUrl,
+      ];
+      const res = await runYtDlp(cmd, "fetch related mix", options);
+      if (res.exitCode === 0 && res.stdout.trim()) {
+        const tracks: TRelatedTrack[] = [];
+        for (const line of res.stdout.split(/\r?\n/)) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          try {
+            const entry = JSON.parse(trimmed) as {
+              id?: string;
+              title?: string;
+              url?: string;
+            };
+            if (entry.id && entry.id !== videoId) {
+              tracks.push({
+                id: entry.id,
+                title: entry.title ?? `Recommended Track (${entry.id})`,
+                url: `https://www.youtube.com/watch?v=${entry.id}`,
+              });
+            }
+          } catch {}
+        }
+        if (tracks.length > 0) {
+          options.log(`[yt-dlp] Found ${tracks.length} mix recommendations`);
+          return tracks;
+        }
+      }
+    } catch (err) {
+      options.error("[yt-dlp] Failed to fetch mix recommendations:", err);
+    }
+  }
+
+  // 2. Fallback: Search related songs using ytsearch
+  const searchQuery = isId
+    ? `ytsearch5:${seedUrlOrId}`
+    : `ytsearch5:${seedUrlOrId} music`;
+  options.log(`[yt-dlp] Fallback search for related tracks: ${searchQuery}`);
+  try {
+    const cmd = [
+      ytDlpPath,
+      ...base,
+      "--flat-playlist",
+      "--dump-json",
+      searchQuery,
+    ];
+    const res = await runYtDlp(cmd, "search related fallback", options);
+    if (res.exitCode === 0 && res.stdout.trim()) {
+      const tracks: TRelatedTrack[] = [];
+      for (const line of res.stdout.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        try {
+          const entry = JSON.parse(trimmed) as {
+            id?: string;
+            title?: string;
+            url?: string;
+          };
+          if (entry.id && entry.id !== videoId) {
+            tracks.push({
+              id: entry.id,
+              title: entry.title ?? `Track ${entry.id}`,
+              url: `https://www.youtube.com/watch?v=${entry.id}`,
+            });
+          }
+        } catch {}
+      }
+      return tracks;
+    }
+  } catch (err) {
+    options.error("[yt-dlp] Fallback related search failed:", err);
+  }
+
+  return [];
+};
+
 export {
+  extractYouTubeVideoId,
   fetchYouTubeMetadata,
+  fetchYouTubeRelatedTracks,
   isYouTubeUrl,
   logYtDlpLine,
   resolveYouTubeTrack,
   spawnYouTubeAudioPipe,
 };
-export type { TYtDlpMetadataResult, TYtDlpOptions, TYtDlpTrackInfo };
+export type {
+  TRelatedTrack,
+  TYtDlpMetadataResult,
+  TYtDlpOptions,
+  TYtDlpTrackInfo,
+};

@@ -22,10 +22,13 @@ import {
   getExistingState,
   getPlayerStateSnapshot,
   getState,
+  recordPlayedVideo,
   removeQueueItem,
   takeNextFromQueue,
 } from "./player-state";
 import {
+  extractYouTubeVideoId,
+  fetchYouTubeRelatedTracks,
   isYouTubeUrl,
   resolveYouTubeTrack,
   type TYtDlpTrackInfo,
@@ -172,7 +175,59 @@ const triggerPrefetchNext = (
 
   const nextItem = state.queue[0];
 
-  if (!nextItem) return;
+  if (!nextItem) {
+    if (
+      state.autoplay &&
+      state.lastPlayedVideoId &&
+      !state.prefetchedAutoplayTrack &&
+      !state.autoplayPrefetchPromise
+    ) {
+      ctx.logger.debug(
+        "Autoplay active with empty queue; prefetching related track for:",
+        state.lastPlayedVideoId,
+      );
+
+      const promise = (async () => {
+        try {
+          const related = await fetchYouTubeRelatedTracks(
+            state.lastPlayedVideoId!,
+            {
+              log: ctx.logger.log,
+              error: ctx.logger.error,
+              debug: ctx.logger.debug,
+              proxy: options.proxy,
+            },
+          );
+
+          const candidate =
+            related.find((r) => !state.recentVideoIds.includes(r.id)) ??
+            related[0];
+
+          if (!candidate) return null;
+
+          const trackInfo = await resolveYouTubeTrack(candidate.url, {
+            log: ctx.logger.log,
+            error: ctx.logger.error,
+            debug: ctx.logger.debug,
+            proxy: options.proxy,
+          });
+
+          state.prefetchedAutoplayTrack = trackInfo;
+          ctx.logger.log("Prefetched autoplay track:", trackInfo.title);
+          return trackInfo;
+        } catch (err) {
+          ctx.logger.error("Failed to prefetch autoplay track", err);
+          return null;
+        } finally {
+          state.autoplayPrefetchPromise = null;
+        }
+      })();
+
+      state.autoplayPrefetchPromise = promise;
+    }
+    return;
+  }
+
   if (nextItem.resolvedTrack || nextItem.prefetchPromise) return;
 
   if (!isYouTubeUrl(nextItem.sourceUrl)) {
@@ -287,7 +342,7 @@ const startMusicStream = async (
         const queueHasItems = state.queue.length > 0;
         const shouldStartNext =
           state.endAction === "next" ||
-          (state.endAction !== "stop" && queueHasItems);
+          (state.endAction !== "stop" && (queueHasItems || state.autoplay));
 
         state.endAction = "none";
         cleanupChannel(ctx, channelId);
@@ -314,6 +369,11 @@ const startMusicStream = async (
     state.producerCloseHandler = () => cleanupChannel(ctx, channelId);
 
     state.audioProducer.observer.on("close", state.producerCloseHandler);
+
+    const videoId = result.id ?? extractYouTubeVideoId(sourceUrl);
+    if (videoId) {
+      recordPlayedVideo(channelId, videoId);
+    }
 
     state.ffmpegProcess = result.process;
     state.currentSong = result.title;
@@ -344,10 +404,66 @@ const playNextInQueue = async (
   const nextItem = takeNextFromQueue(channelId);
 
   if (!nextItem) {
+    const state = getState(channelId);
+    if (state.autoplay && state.lastPlayedVideoId) {
+      let autoplayTrack = state.prefetchedAutoplayTrack;
+      state.prefetchedAutoplayTrack = null;
+
+      if (!autoplayTrack && state.autoplayPrefetchPromise) {
+        try {
+          autoplayTrack = await state.autoplayPrefetchPromise;
+        } catch {}
+      }
+
+      if (!autoplayTrack) {
+        try {
+          const related = await fetchYouTubeRelatedTracks(
+            state.lastPlayedVideoId,
+            {
+              log: ctx.logger.log,
+              error: ctx.logger.error,
+              debug: ctx.logger.debug,
+              proxy: options.proxy,
+            },
+          );
+          const candidate =
+            related.find((r) => !state.recentVideoIds.includes(r.id)) ??
+            related[0];
+
+          if (candidate) {
+            autoplayTrack = await resolveYouTubeTrack(candidate.url, {
+              log: ctx.logger.log,
+              error: ctx.logger.error,
+              debug: ctx.logger.debug,
+              proxy: options.proxy,
+            });
+          }
+        } catch (err) {
+          ctx.logger.error("Failed to fetch autoplay track on queue end", err);
+        }
+      }
+
+      if (autoplayTrack) {
+        ctx.logger.log("Autoplay starting next track:", autoplayTrack.title);
+        const invokerUserId = state.currentInvokerUserId ?? 0;
+        return startMusicStream(
+          ctx,
+          channelId,
+          autoplayTrack.webpageUrl,
+          options,
+          invokerUserId,
+          autoplayTrack,
+        );
+      }
+    }
+
     publishPlayerState(ctx, channelId);
 
     return "Queue is empty.";
   }
+
+  const state = getState(channelId);
+  state.prefetchedAutoplayTrack = null;
 
   let preResolved = nextItem.resolvedTrack ?? undefined;
 
@@ -608,12 +724,40 @@ const onLoad = async (ctx: TMusicContext) => {
 
       if (state) {
         state.endAction = "stop";
+        state.prefetchedAutoplayTrack = null;
       }
 
       // unconditional, so a half started stream is recoverable too
       cleanupChannel(ctx, channelId);
 
       return buildActionResult(ctx, "Stopped music.", channelId);
+    },
+  });
+
+  ctx.actions.register({
+    name: "toggleAutoplay",
+    description:
+      "Toggles autoplay for YouTube recommendations when the queue ends",
+    requires: Permission.JOIN_VOICE_CHANNELS,
+    executes: async (invoker) => {
+      const channelId = requireVoiceChannelId(
+        invoker.currentVoiceChannelId,
+        "You must be in a voice channel to toggle autoplay.",
+      );
+      const state = getState(channelId);
+      state.autoplay = !state.autoplay;
+
+      if (state.autoplay) {
+        triggerPrefetchNext(ctx, channelId, getPlaybackSettings());
+      } else {
+        state.prefetchedAutoplayTrack = null;
+      }
+
+      return buildActionResult(
+        ctx,
+        `Autoplay is now ${state.autoplay ? "enabled" : "disabled"}.`,
+        channelId,
+      );
     },
   });
 

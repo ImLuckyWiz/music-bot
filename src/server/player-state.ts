@@ -34,6 +34,11 @@ type ChannelStreamState = {
   volume: number;
   queue: TQueueItem[];
   endAction: "none" | "next" | "stop";
+  autoplay: boolean;
+  lastPlayedVideoId: string | null;
+  recentVideoIds: string[];
+  prefetchedAutoplayTrack: TYtDlpTrackInfo | null;
+  autoplayPrefetchPromise: Promise<TYtDlpTrackInfo | null> | null;
 };
 
 const DEFAULT_VOLUME = 50;
@@ -58,6 +63,11 @@ const createInitialState = (): ChannelStreamState => ({
   volume: DEFAULT_VOLUME,
   queue: [],
   endAction: "none",
+  autoplay: false,
+  lastPlayedVideoId: null,
+  recentVideoIds: [],
+  prefetchedAutoplayTrack: null,
+  autoplayPrefetchPromise: null,
 });
 
 const getState = (channelId: number): ChannelStreamState => {
@@ -137,6 +147,7 @@ const emptyPlayerStateSnapshot = (): PlayerStateSnapshot => ({
   currentTrackDurationSeconds: null,
   volume: DEFAULT_VOLUME,
   queue: [],
+  autoplay: false,
 });
 
 const getPlayerStateSnapshot = (
@@ -158,7 +169,19 @@ const getPlayerStateSnapshot = (
     currentTrackDurationSeconds: state.currentTrackDurationSeconds,
     volume: state.volume,
     queue: buildQueueEntries(state),
+    autoplay: state.autoplay,
   };
+};
+
+const recordPlayedVideo = (channelId: number, videoId: string): void => {
+  const state = getState(channelId);
+  state.lastPlayedVideoId = videoId;
+  if (!state.recentVideoIds.includes(videoId)) {
+    state.recentVideoIds.push(videoId);
+    if (state.recentVideoIds.length > 50) {
+      state.recentVideoIds.shift();
+    }
+  }
 };
 
 const getChannelIds = (): number[] => Array.from(channelStreams.keys());
@@ -177,6 +200,7 @@ export {
   getExistingState,
   getPlayerStateSnapshot,
   getState,
+  recordPlayedVideo,
   removeQueueItem,
   takeNextFromQueue,
 };

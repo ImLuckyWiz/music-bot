@@ -70,6 +70,17 @@ const CSS = `
   display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
   padding: 12px 16px 16px;
 }
+.mb-autoplay {
+  grid-column: 1; justify-self: start; display: flex; align-items: center; gap: 6px;
+  padding: 6px 10px; border: 0; border-radius: 999px; background: #282828;
+  color: #a7a7a7; font: inherit; font-size: 11px; font-weight: 600; cursor: pointer;
+  transition: all 0.15s ease;
+}
+.mb-autoplay:hover:not(:disabled) { background: #333; color: #fff; }
+.mb-autoplay:disabled { opacity: 0.4; cursor: not-allowed; }
+.mb-autoplay-active { background: rgba(30, 215, 96, 0.15); color: ${ACCENT}; }
+.mb-autoplay-active:hover:not(:disabled) { background: rgba(30, 215, 96, 0.25); color: ${ACCENT}; }
+
 .mb-transport {
   grid-column: 2; display: flex; align-items: center; gap: 24px;
 }

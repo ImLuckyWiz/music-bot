@@ -2,6 +2,8 @@ import { Button, Popover, PopoverContent, PopoverTrigger } from "@sharkord/ui";
 import type { CSSProperties } from "react";
 import { memo, useEffect, useState } from "react";
 import {
+  CloseIcon,
+  InfinityIcon,
   MuteIcon,
   NoteIcon,
   PlayIcon,
@@ -33,6 +35,7 @@ const PlayerPanel = ({ controller }: PlayerPanelProps) => {
     setVolume,
     skip,
     stop,
+    toggleAutoplay,
   } = controller;
   const [query, setQuery] = useState("");
   // held locally while dragging, so the slider does not fight its own pushes
@@ -132,6 +135,22 @@ const PlayerPanel = ({ controller }: PlayerPanelProps) => {
       </div>
 
       <div className="mb-controls">
+        <button
+          type="button"
+          className={`mb-autoplay ${player.autoplay ? "mb-autoplay-active" : ""}`}
+          title={
+            player.autoplay
+              ? "Autoplay enabled (YouTube Mix)"
+              : "Autoplay disabled"
+          }
+          aria-label="Toggle autoplay"
+          disabled={isBusy || !can.autoplay}
+          onClick={toggleAutoplay}
+        >
+          <InfinityIcon size={16} />
+          <span>Autoplay</span>
+        </button>
+
         <div className="mb-transport">
           <button
             type="button"

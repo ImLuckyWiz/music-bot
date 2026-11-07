@@ -14,6 +14,7 @@ type PlayerStateSnapshot = {
   currentTrackDurationSeconds: number | null;
   volume: number;
   queue: PlayerQueueEntry[];
+  autoplay: boolean;
 };
 
 type PlayerActionResponse = {
@@ -49,6 +50,10 @@ type TSharkord = {
     };
     setVolume: {
       payload: { volume: number };
+      response: PlayerActionResponse;
+    };
+    toggleAutoplay: {
+      payload: void;
       response: PlayerActionResponse;
     };
   };

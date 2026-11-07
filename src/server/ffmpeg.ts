@@ -17,6 +17,7 @@ type TMusicStreamResult = {
   title: string;
   thumbnailUrl?: string;
   durationSeconds?: number;
+  id?: string;
 };
 
 type TMusicOptions = {
@@ -136,6 +137,7 @@ const spawnMusicStream = async (
   let title = options.sourceUrl;
   let thumbnailUrl: string | undefined;
   let durationSeconds: number | undefined;
+  let trackId: string | undefined;
   let ytDlpProcess: ReturnType<typeof Bun.spawn> | null = null;
 
   if (isYouTubeUrl(options.sourceUrl)) {
@@ -151,6 +153,7 @@ const spawnMusicStream = async (
     title = trackInfo.title;
     thumbnailUrl = trackInfo.thumbnailUrl;
     durationSeconds = trackInfo.durationSeconds;
+    trackId = trackInfo.id;
 
     if (trackInfo.streamUrl) {
       options.log("Using direct stream URL for YouTube audio");
@@ -312,6 +315,7 @@ const spawnMusicStream = async (
     title,
     thumbnailUrl,
     durationSeconds,
+    id: trackId,
   };
 };
 

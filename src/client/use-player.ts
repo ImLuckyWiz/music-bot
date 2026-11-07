@@ -13,6 +13,7 @@ const EMPTY_PLAYER_STATE: PlayerStateSnapshot = {
   currentTrackDurationSeconds: null,
   volume: 50,
   queue: [],
+  autoplay: false,
 };
 
 const getErrorMessage = (error: unknown): string =>
@@ -64,6 +65,7 @@ const usePlayer = () => {
     volume: useCanUseAction<TSharkord>("setVolume"),
     jump: useCanUseAction<TSharkord>("jumpToQueueItem"),
     remove: useCanUseAction<TSharkord>("removeQueueItem"),
+    autoplay: useCanUseAction<TSharkord>("toggleAutoplay"),
   };
   const [player, setPlayer] = useState(EMPTY_PLAYER_STATE);
   const [error, setError] = useState("");
@@ -142,6 +144,7 @@ const usePlayer = () => {
     skip: () => run(() => callAction("nextMusic")),
     stop: () => run(() => callAction("stopMusic")),
     setVolume: (volume: number) => run(() => callAction("setVolume", { volume })),
+    toggleAutoplay: () => run(() => callAction("toggleAutoplay")),
   };
 };
 
