@@ -53,9 +53,11 @@ class UpstreamExpiredError extends Error {
   }
 }
 
-const CHUNK_BYTES = 10 * 1024 * 1024; // matches yt-dlp's http_chunk_size
+// googlevideo throttles each ranged request to about playback speed, so a big
+// chunk takes long to arrive in full: use small ones and several in flight
+const CHUNK_BYTES = 2 * 1024 * 1024;
 const FIRST_CHUNK_BYTES = 1024 * 1024; // small, so playback starts quickly
-const READ_AHEAD_CHUNKS = 1; // held chunks = the one being served + this many
+const READ_AHEAD_CHUNKS = 3; // held chunks = the one being served + this many
 const SLICE_BYTES = 256 * 1024;
 const OUT_QUEUE_BYTES = 1024 * 1024; // what may sit unread in the response
 const STALL_TIMEOUT_MS = 10_000; // no bytes for this long fails the attempt

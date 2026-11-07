@@ -7,7 +7,7 @@ Built against **plugin SDK v2**.
 ## Video streaming
 
 For YouTube links the bot asks yt-dlp for separate video and audio streams
-(H.264 first, VP9 as the alternative, up to the configured max resolution) and
+(VP9 first, H.264 re-encoded without B-frames as the fallback, up to the configured max resolution) and
 forwards the video with ffmpeg stream copy (`-c:v copy`), so the server does no
 video transcoding. Audio is still encoded to Opus. The matching WebRTC producer
 (H.264 or VP9) is created per track, and the player shows a badge such as

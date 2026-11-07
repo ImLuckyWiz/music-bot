@@ -509,6 +509,7 @@ const startMusicStream = async (
       proxy: options.proxy,
       chunkedInput: options.chunkedInput,
       limitFps: options.limitFps,
+      videoMaxHeight: trackInfo.resolvedMaxHeight,
       preResolvedTrack: trackInfo,
       log: ctx.logger.log,
       error: ctx.logger.error,

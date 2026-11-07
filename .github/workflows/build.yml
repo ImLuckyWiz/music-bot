@@ -55,10 +55,11 @@ jobs:
           META="dist/${VERSION}.json"
 
           cat << 'EOF' > release_notes.md
-          ### Music Bot Chunked Input Proxy v${VERSION}
-          - **Local Chunk Proxy (Experimental)**: Fetches YouTube media in 10 MB ranged requests over a local `127.0.0.1` proxy with proactive read-ahead and retry handling, eliminating GoogleVideo connection dropouts.
-          - **Mid-Stream URL Refresh**: Re-resolves expired CDN URLs on the fly if YouTube links expire during long videos.
-          - **Seamless Direct Fallback**: Reverts transparently to direct input connections if the proxy fails to initialize.
+          ### Music Bot Video Stutter Fix & Buffer Optimization v${VERSION}
+          - **Video Stutter Elimination**: Prioritizes VP9 streams first across all resolutions. Unlike YouTube's H.264 (which uses B-frames that cause backwards RTP timestamp jumps in WebRTC), VP9 has no display-order reordering and plays completely smoothly.
+          - **Zero B-Frame H.264 Fallback**: Re-encodes H.264 fallback streams with `-bf 0` (baseline, zero B-frames) to keep RTP timestamps strictly monotonic.
+          - **Pipelined Chunk Proxy**: Switched chunk proxy to 2 MB chunks with 3 read-ahead chunks in flight to bypass GoogleVideo playback-speed throttling.
+          - **Initial Read Burst**: Configured `-readrate_initial_burst 1` on FFmpeg inputs so the demuxer buffer fills immediately on startup.
           - **Built for Sharkord**: Unpacks to `music-bot/` containing `manifest.json`, `client/index.js`, and `server/index.js`.
           EOF
 
@@ -69,6 +70,6 @@ jobs:
           else
             echo "Creating new release $TAG..."
             gh release create "$TAG" "$ARCHIVE" "$META" \
-              --title "v${VERSION} - Chunked Input Proxy" \
+              --title "v${VERSION} - Video Stutter Fix & Buffer Optimization" \
               --notes-file release_notes.md
           fi

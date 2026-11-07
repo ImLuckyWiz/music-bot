@@ -40,6 +40,8 @@ type TMusicOptions = {
   chunkedInput?: boolean;
   /** needed to re-resolve a track whose URL expired mid-stream */
   limitFps?: boolean;
+  /** the height the track was resolved for; sizes the H.264 re-encode bitrate */
+  videoMaxHeight?: number;
   volume?: number; // 0-100, default 100
   bitrate?: string;
   proxy?: string;
@@ -55,6 +57,17 @@ const FORCE_KILL_TIMEOUT_MS = 1500;
 // a keyframe goes out as dozens of packets at once, so ask for a 1 MB send
 // buffer (the kernel still caps it at net.core.wmem_max)
 const RTP_OUTPUT_QUERY = "pkt_size=1200&buffer_size=1048576";
+
+const INPUT_INITIAL_BURST_SECONDS = 1;
+
+// H.264 from YouTube has B-frames, so copying it sends RTP timestamps backwards
+// and the browser stutters. Re-encoding without B-frames keeps them monotonic.
+const H264_TRANSCODE_BITRATES: Record<number, string> = {
+  480: "1200k",
+  720: "2500k",
+  1080: "4500k",
+  1440: "8000k",
+};
 
 const readLines = async (
   stream: ReadableStream<Uint8Array>,
@@ -381,12 +394,13 @@ const spawnMusicStream = async (
     `rtp://${options.rtpHost}:${options.audioRtpPort}?${RTP_OUTPUT_QUERY}`,
   ];
 
-  // -re paces each input to real time, so both inputs need their own
+  // -re paces each input to real time, so both inputs need their own. A short
+  // initial burst lets the demuxer fill its buffer instead of running empty
   const pacedInput = (url: string): string[] => [
     ...reconnectArgs(inputUserAgent, isLocalUrl(url)),
     "-re",
     "-readrate_initial_burst",
-    "0",
+    String(INPUT_INITIAL_BURST_SECONDS),
     "-i",
     url,
   ];
@@ -399,12 +413,56 @@ const spawnMusicStream = async (
     // muxed sources hand back one URL for both: open it once, map both streams
     const singleInput = videoInputs.video === videoInputs.audio;
 
+    const targetHeight = options.videoMaxHeight ?? 720;
+    const h264Bitrate =
+      H264_TRANSCODE_BITRATES[targetHeight] ?? H264_TRANSCODE_BITRATES[720]!;
+    const h264Rate = Number.parseInt(h264Bitrate, 10);
+
+    const videoCodecArgs =
+      videoCodec === "vp9"
+        ? [
+            "-c:v",
+            "copy",
+            // FFmpeg still flags its VP9 RTP packetizer as experimental
+            "-strict",
+            "experimental",
+          ]
+        : [
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-tune",
+            "zerolatency",
+            "-profile:v",
+            "baseline",
+            "-bf",
+            "0",
+            "-pix_fmt",
+            "yuv420p",
+            "-b:v",
+            h264Bitrate,
+            "-maxrate",
+            `${Math.round(h264Rate * 1.2)}k`,
+            "-bufsize",
+            `${h264Rate * 2}k`,
+            // a keyframe every 2 seconds so late joiners recover quickly
+            "-force_key_frames",
+            "expr:gte(t,n_forced*2)",
+            "-bsf:v",
+            "dump_extra=freq=keyframe",
+          ];
+
+    if (videoCodec === "h264") {
+      options.log(
+        "H.264 source: re-encoding without B-frames for monotonic RTP timestamps",
+      );
+    }
+
     const videoOutputArgs = [
       "-map",
       "0:v:0",
-      "-c:v",
-      "copy",
-      ...(videoCodec === "h264" ? ["-bsf:v", "h264_mp4toannexb"] : []),
+      ...videoCodecArgs,
       "-payload_type",
       String(options.videoPayloadType),
       "-ssrc",
@@ -429,7 +487,7 @@ const spawnMusicStream = async (
       ...inputArgs,
       "-re",
       "-readrate_initial_burst",
-      "0",
+      String(INPUT_INITIAL_BURST_SECONDS),
       "-i",
       inputSource,
       "-vn",

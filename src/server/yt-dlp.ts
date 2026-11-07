@@ -50,8 +50,11 @@ type TYtDlpOptions = {
 const AUDIO_FORMAT_SELECTOR = "bestaudio[ext=webm]/bestaudio/best";
 
 /**
- * H.264 first up to 1080p for the widest client support; above 1080p only VP9
- * exists on YouTube, so it leads there to avoid settling for a 1080p H.264.
+ * VP9 first at every resolution. YouTube's H.264 uses B-frames, and forwarding
+ * those untouched makes RTP timestamps jump backwards (decode order vs display
+ * order), which WebRTC receivers render as stutter. VP9 has no such reordering,
+ * so it can be copied as-is; H.264 is only the fallback and gets re-encoded
+ * without B-frames (see ffmpeg.ts).
  * Video is forwarded untouched, so a 60fps source costs roughly double the
  * bitrate and packet rate: with limitFps, 30fps (or lower) variants are tried
  * first and 60fps is only the fallback.
@@ -62,7 +65,7 @@ const buildVideoFormatSelector = (
 ): string => {
   const variant = (codec: string, fps: boolean) =>
     `bestvideo[vcodec^=${codec}][height<=${maxHeight}]${fps ? "[fps<=30]" : ""}+bestaudio`;
-  const codecs = maxHeight > 1080 ? ["vp09", "avc1"] : ["avc1", "vp09"];
+  const codecs = ["vp09", "avc1"];
   const fpsPasses = limitFps ? [true, false] : [false];
   const video = fpsPasses.flatMap((fps) =>
     codecs.map((codec) => variant(codec, fps)),
