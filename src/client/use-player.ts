@@ -15,7 +15,7 @@ const EMPTY_PLAYER_STATE: PlayerStateSnapshot = {
   volume: 50,
   queue: [],
   autoplay: false,
-  videoEnabled: true,
+  videoEnabled: false,
 };
 
 const getErrorMessage = (error: unknown): string =>

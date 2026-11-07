@@ -75,7 +75,7 @@ const createInitialState = (): ChannelStreamState => ({
   queue: [],
   endAction: "none",
   autoplay: false,
-  videoEnabled: true,
+  videoEnabled: false,
   lastPlayedVideoId: null,
   recentVideoIds: [],
   prefetchedAutoplayTrack: null,
@@ -162,7 +162,7 @@ const emptyPlayerStateSnapshot = (): PlayerStateSnapshot => ({
   volume: DEFAULT_VOLUME,
   queue: [],
   autoplay: false,
-  videoEnabled: true,
+  videoEnabled: false,
 });
 
 const getPlayerStateSnapshot = (
