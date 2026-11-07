@@ -709,9 +709,9 @@ const onLoad = async (ctx: TMusicContext) => {
       key: "bufferInput",
       name: "Input Buffer",
       description:
-        "Read ahead about 4 MB from YouTube before sending, so a CDN stall or reconnect does not freeze the stream. Disable if playback fails to start.",
+        "Experimental. Read ahead about 4 MB from YouTube through ffmpeg's async protocol. On some servers a TLS reset during a reconnect ends the track, so it is off by default.",
       type: "boolean",
-      defaultValue: true,
+      defaultValue: false,
     },
     {
       key: "proxy",
@@ -729,7 +729,7 @@ const onLoad = async (ctx: TMusicContext) => {
     streamVideo: parseBooleanSetting(settings.get("streamVideo"), true),
     maxResolution: parseMaxResolution(settings.get("maxResolution")),
     limitFps: parseBooleanSetting(settings.get("limitFps"), true),
-    bufferInput: parseBooleanSetting(settings.get("bufferInput"), true),
+    bufferInput: parseBooleanSetting(settings.get("bufferInput"), false),
   });
 
   ctx.events.on("voice:runtime_closed", ({ channelId }) => {

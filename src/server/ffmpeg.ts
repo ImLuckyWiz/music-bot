@@ -47,6 +47,10 @@ type TMusicOptions = {
 
 const FORCE_KILL_TIMEOUT_MS = 1500;
 
+// a keyframe goes out as dozens of packets at once, so ask for a 1 MB send
+// buffer (the kernel still caps it at net.core.wmem_max)
+const RTP_OUTPUT_QUERY = "pkt_size=1200&buffer_size=1048576";
+
 const readLines = async (
   stream: ReadableStream<Uint8Array>,
   onLine: (line: string) => void,
@@ -287,7 +291,7 @@ const spawnMusicStream = async (
     String(options.audioSsrc),
     "-f",
     "rtp",
-    `rtp://${options.rtpHost}:${options.audioRtpPort}?pkt_size=1200`,
+    `rtp://${options.rtpHost}:${options.audioRtpPort}?${RTP_OUTPUT_QUERY}`,
   ];
 
   // the async protocol reads ahead into a 4 MB ring buffer on its own thread,
@@ -325,7 +329,7 @@ const spawnMusicStream = async (
       String(options.videoSsrc),
       "-f",
       "rtp",
-      `rtp://${options.rtpHost}:${options.videoRtpPort}?pkt_size=1200`,
+      `rtp://${options.rtpHost}:${options.videoRtpPort}?${RTP_OUTPUT_QUERY}`,
     ];
 
     ffmpegArgs = [

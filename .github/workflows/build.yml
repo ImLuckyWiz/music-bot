@@ -55,11 +55,9 @@ jobs:
           META="dist/${VERSION}.json"
 
           cat << 'EOF' > release_notes.md
-          ### Music Bot Video Streaming Stability & Buffer Improvements v${VERSION}
-          - **Input Ring Buffer**: FFmpeg `async:` protocol with a 4 MB read-ahead buffer so CDN stalls or network resets don't freeze the stream.
-          - **Robust Reconnection**: Auto-reconnect on network errors and HTTP 4xx/5xx resets (`-reconnect_on_network_error`, `-reconnect_on_http_error`) with a 15s timeout.
-          - **30 FPS Limiter**: New setting to prefer $\le 30$ fps video variants, reducing bandwidth and packet rate by half to prevent stutter.
-          - **Resolution Settings**: Added 480p option and adjusted default resolution to 720p for optimal stability.
+          ### Music Bot Video Streaming Improvements v${VERSION}
+          - **RTP Socket Send Buffer**: Configured 1 MB socket buffer (`buffer_size=1048576`) on RTP outputs to eliminate packet drops during video keyframe packet bursts.
+          - **Input Buffer Setting**: Marked the `async:` input buffer as experimental and disabled it by default to avoid premature track resets on servers with sensitive TLS reconnects.
           - **Built for Sharkord**: Unpacks to `music-bot/` containing `manifest.json`, `client/index.js`, and `server/index.js`.
           EOF
 
@@ -70,6 +68,6 @@ jobs:
           else
             echo "Creating new release $TAG..."
             gh release create "$TAG" "$ARCHIVE" "$META" \
-              --title "v${VERSION} - Video Streaming Stability & Buffer Improvements" \
+              --title "v${VERSION} - RTP Buffer Optimization" \
               --notes-file release_notes.md
           fi
