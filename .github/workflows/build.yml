@@ -55,10 +55,9 @@ jobs:
           META="dist/${VERSION}.json"
 
           cat << 'EOF' > release_notes.md
-          ### Music Bot Keyframe Pre-Roll Stream Announcement v${VERSION}
-          - **Pre-Roll Viewer Setup Delay**: Announces video stream 1.5s prior to FFmpeg starting so clients attach before the initial keyframe leaves, eliminating black video tiles on startup.
-          - **Safe Abort on Pre-Roll Interruption**: Checks for producer closure before spawning FFmpeg if playback was cancelled during setup.
-          - **Robust Track Height Fallback**: Safely falls back on `resolvedMaxHeight` with optional chaining when sizing re-encode bitrates.
+          ### Music Bot Zero Initial Burst Optimization v${VERSION}
+          - **Disable Readrate Initial Burst**: Sets `INPUT_INITIAL_BURST_SECONDS = 0` (`-readrate_initial_burst 0`) in FFmpeg inputs. Disabling the 1-second initial burst prevents flooding RTP packets onto the network right after the initial keyframe, preventing packet loss and eliminating video stall/freeze before the next keyframe.
+          - **Pre-Roll Viewer Setup**: Retains 1.5s setup delay for clients to attach before streaming.
           - **Built for Sharkord**: Unpacks to `music-bot/` containing `manifest.json`, `client/index.js`, and `server/index.js`.
           EOF
 
@@ -69,6 +68,6 @@ jobs:
           else
             echo "Creating new release $TAG..."
             gh release create "$TAG" "$ARCHIVE" "$META" \
-              --title "v${VERSION} - Keyframe Pre-Roll Announcement" \
+              --title "v${VERSION} - Zero Initial Burst Optimization" \
               --notes-file release_notes.md
           fi

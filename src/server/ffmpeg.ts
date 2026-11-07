@@ -58,7 +58,11 @@ const FORCE_KILL_TIMEOUT_MS = 1500;
 // buffer (the kernel still caps it at net.core.wmem_max)
 const RTP_OUTPUT_QUERY = "pkt_size=1200&buffer_size=1048576";
 
-const INPUT_INITIAL_BURST_SECONDS = 1;
+// no initial burst: FFmpeg forwards RTP as soon as it reads, so a burst dumps
+// a second of video on the network at once and risks losing packets of the
+// frames right after the first keyframe, which stalls the picture until the
+// next keyframe. The chunk proxy already keeps the input buffered.
+const INPUT_INITIAL_BURST_SECONDS = 0;
 
 // H.264 from YouTube has B-frames, so copying it sends RTP timestamps backwards
 // and the browser stutters. Re-encoding without B-frames keeps them monotonic.
@@ -394,8 +398,7 @@ const spawnMusicStream = async (
     `rtp://${options.rtpHost}:${options.audioRtpPort}?${RTP_OUTPUT_QUERY}`,
   ];
 
-  // -re paces each input to real time, so both inputs need their own. A short
-  // initial burst lets the demuxer fill its buffer instead of running empty
+  // -re paces each input to real time, so both inputs need their own
   const pacedInput = (url: string): string[] => [
     ...reconnectArgs(inputUserAgent, isLocalUrl(url)),
     "-re",
