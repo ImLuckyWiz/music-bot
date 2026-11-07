@@ -70,16 +70,48 @@ const CSS = `
   display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
   padding: 12px 16px 16px;
 }
-.mb-autoplay {
-  grid-column: 1; justify-self: start; display: flex; align-items: center; gap: 6px;
-  padding: 6px 10px; border: 0; border-radius: 999px; background: #282828;
+.mb-autoplay-toggle {
+  grid-column: 1; justify-self: start; display: inline-flex; align-items: center; gap: 7px;
+  padding: 4px 8px; border: 0; border-radius: 999px; background: rgba(255, 255, 255, 0.05);
   color: #a7a7a7; font: inherit; font-size: 11px; font-weight: 600; cursor: pointer;
-  transition: all 0.15s ease;
+  white-space: nowrap; transition: all 0.2s ease; user-select: none;
 }
-.mb-autoplay:hover:not(:disabled) { background: #333; color: #fff; }
-.mb-autoplay:disabled { opacity: 0.4; cursor: not-allowed; }
-.mb-autoplay-active { background: rgba(30, 215, 96, 0.15); color: ${ACCENT}; }
-.mb-autoplay-active:hover:not(:disabled) { background: rgba(30, 215, 96, 0.25); color: ${ACCENT}; }
+.mb-autoplay-toggle:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1); color: #fff;
+}
+.mb-autoplay-toggle:disabled {
+  opacity: 0.4; cursor: not-allowed;
+}
+.mb-autoplay-toggle.mb-autoplay-active {
+  background: rgba(30, 215, 96, 0.12); color: #fff;
+}
+.mb-autoplay-toggle.mb-autoplay-active:hover:not(:disabled) {
+  background: rgba(30, 215, 96, 0.2);
+}
+.mb-autoplay-icon {
+  display: inline-flex; align-items: center; color: #a7a7a7;
+  transition: color 0.2s ease;
+}
+.mb-autoplay-toggle.mb-autoplay-active .mb-autoplay-icon {
+  color: ${ACCENT};
+}
+.mb-switch-track {
+  width: 28px; height: 16px; border-radius: 999px; background: #3e3e3e;
+  position: relative; display: inline-block; flex: none;
+  transition: background 0.2s ease;
+}
+.mb-switch-thumb {
+  width: 12px; height: 12px; border-radius: 50%; background: #ffffff;
+  position: absolute; top: 2px; left: 2px;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+.mb-switch-track.mb-switch-active {
+  background: ${ACCENT};
+}
+.mb-switch-track.mb-switch-active .mb-switch-thumb {
+  transform: translateX(12px);
+}
 
 .mb-transport {
   grid-column: 2; display: flex; align-items: center; gap: 24px;

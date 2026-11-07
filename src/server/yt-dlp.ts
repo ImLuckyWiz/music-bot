@@ -325,14 +325,17 @@ const extractYouTubeVideoId = (url: string): string | null => {
 const fetchYouTubeRelatedTracks = async (
   seedUrlOrId: string,
   options: TYtDlpOptions,
+  seedTitle?: string,
 ): Promise<TRelatedTrack[]> => {
   const videoId = extractYouTubeVideoId(seedUrlOrId) ?? seedUrlOrId;
   const isId = /^[a-zA-Z0-9_-]{11}$/.test(videoId);
 
   const ytDlpPath = getYtDlpBinaryPath();
-  const base = await getYtDlpBaseArgs(options);
+  const rawBase = await getYtDlpBaseArgs(options);
+  // Filter out --no-playlist so yt-dlp can retrieve YouTube Mix (Radio) playlists
+  const base = rawBase.filter((arg) => arg !== "--no-playlist");
 
-  // 1. Try YouTube Mix/Radio URL if we have a valid 11-char videoId
+  // 1. Try YouTube Mix/Radio playlist if we have a valid 11-char videoId
   if (isId) {
     const mixUrl = `https://www.youtube.com/watch?v=${videoId}&list=RD${videoId}`;
     options.log(`[yt-dlp] Fetching YouTube Mix recommendations for ${videoId}`);
@@ -341,10 +344,11 @@ const fetchYouTubeRelatedTracks = async (
       const cmd = [
         ytDlpPath,
         ...base,
+        "--yes-playlist",
         "--flat-playlist",
         "--dump-json",
         "--playlist-items",
-        "2-15",
+        "1-25",
         mixUrl,
       ];
       const res = await runYtDlp(cmd, "fetch related mix", options);
@@ -358,8 +362,13 @@ const fetchYouTubeRelatedTracks = async (
               id?: string;
               title?: string;
               url?: string;
+              duration?: number;
             };
             if (entry.id && entry.id !== videoId) {
+              // Ignore short meme clips or sound effects under 60 seconds
+              if (typeof entry.duration === "number" && entry.duration < 60) {
+                continue;
+              }
               tracks.push({
                 id: entry.id,
                 title: entry.title ?? `Recommended Track (${entry.id})`,
@@ -379,43 +388,54 @@ const fetchYouTubeRelatedTracks = async (
   }
 
   // 2. Fallback: Search related songs using ytsearch
-  const searchQuery = isId
-    ? `ytsearch5:${seedUrlOrId}`
-    : `ytsearch5:${seedUrlOrId} music`;
-  options.log(`[yt-dlp] Fallback search for related tracks: ${searchQuery}`);
-  try {
-    const cmd = [
-      ytDlpPath,
-      ...base,
-      "--flat-playlist",
-      "--dump-json",
-      searchQuery,
-    ];
-    const res = await runYtDlp(cmd, "search related fallback", options);
-    if (res.exitCode === 0 && res.stdout.trim()) {
-      const tracks: TRelatedTrack[] = [];
-      for (const line of res.stdout.split(/\r?\n/)) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        try {
-          const entry = JSON.parse(trimmed) as {
-            id?: string;
-            title?: string;
-            url?: string;
-          };
-          if (entry.id && entry.id !== videoId) {
-            tracks.push({
-              id: entry.id,
-              title: entry.title ?? `Track ${entry.id}`,
-              url: `https://www.youtube.com/watch?v=${entry.id}`,
-            });
-          }
-        } catch {}
+  // Avoid querying raw 11-character hash IDs on search as it produces unrelated clips.
+  const cleanTitle = (seedTitle ?? "").replace(/[^\w\s]/gi, " ").trim();
+  const queryTerm =
+    cleanTitle.length > 2 ? cleanTitle : isId ? "" : seedUrlOrId;
+
+  if (queryTerm) {
+    const searchQuery = `ytsearch10:${queryTerm} music`;
+    options.log(`[yt-dlp] Fallback search for related tracks: ${searchQuery}`);
+    try {
+      const cmd = [
+        ytDlpPath,
+        ...base,
+        "--flat-playlist",
+        "--dump-json",
+        searchQuery,
+      ];
+      const res = await runYtDlp(cmd, "search related fallback", options);
+      if (res.exitCode === 0 && res.stdout.trim()) {
+        const tracks: TRelatedTrack[] = [];
+        for (const line of res.stdout.split(/\r?\n/)) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          try {
+            const entry = JSON.parse(trimmed) as {
+              id?: string;
+              title?: string;
+              url?: string;
+              duration?: number;
+            };
+            if (entry.id && entry.id !== videoId) {
+              if (typeof entry.duration === "number" && entry.duration < 60) {
+                continue;
+              }
+              tracks.push({
+                id: entry.id,
+                title: entry.title ?? `Track ${entry.id}`,
+                url: `https://www.youtube.com/watch?v=${entry.id}`,
+              });
+            }
+          } catch {}
+        }
+        if (tracks.length > 0) {
+          return tracks;
+        }
       }
-      return tracks;
+    } catch (err) {
+      options.error("[yt-dlp] Fallback related search failed:", err);
     }
-  } catch (err) {
-    options.error("[yt-dlp] Fallback related search failed:", err);
   }
 
   return [];

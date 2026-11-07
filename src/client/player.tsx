@@ -137,7 +137,9 @@ const PlayerPanel = ({ controller }: PlayerPanelProps) => {
       <div className="mb-controls">
         <button
           type="button"
-          className={`mb-autoplay ${player.autoplay ? "mb-autoplay-active" : ""}`}
+          role="switch"
+          aria-checked={player.autoplay}
+          className={`mb-autoplay-toggle ${player.autoplay ? "mb-autoplay-active" : ""}`}
           title={
             player.autoplay
               ? "Autoplay enabled (YouTube Mix)"
@@ -147,7 +149,14 @@ const PlayerPanel = ({ controller }: PlayerPanelProps) => {
           disabled={isBusy || !can.autoplay}
           onClick={toggleAutoplay}
         >
-          <InfinityIcon size={16} />
+          <span
+            className={`mb-switch-track ${player.autoplay ? "mb-switch-active" : ""}`}
+          >
+            <span className="mb-switch-thumb" />
+          </span>
+          <span className="mb-autoplay-icon">
+            <InfinityIcon size={14} />
+          </span>
           <span>Autoplay</span>
         </button>
 

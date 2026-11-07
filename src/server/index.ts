@@ -197,6 +197,7 @@ const triggerPrefetchNext = (
               debug: ctx.logger.debug,
               proxy: options.proxy,
             },
+            state.currentSong ?? undefined,
           );
 
           const candidate =
@@ -425,6 +426,7 @@ const playNextInQueue = async (
               debug: ctx.logger.debug,
               proxy: options.proxy,
             },
+            state.currentSong ?? undefined,
           );
           const candidate =
             related.find((r) => !state.recentVideoIds.includes(r.id)) ??
