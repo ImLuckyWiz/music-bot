@@ -74,8 +74,13 @@ download leaves the working one untouched and playback is not interrupted.
 - **Bitrate** — the audio bitrate for the stream (default `128k`).
 - **Stream Video** — stream the video of YouTube links (default on). Turn it
   off for audio only.
-- **Max Resolution** — `720p`, `1080p` or `1440p` (default `1080p`). Anything
+- **Max Resolution** — `480p`, `720p`, `1080p` or `1440p` (default `720p`). Anything
   above 1080p is VP9 only. Applies from the next track on.
+- **Limit to 30 fps** — prefer 30 fps or lower video (default on). Video is
+  copied untouched, so 60 fps roughly doubles bandwidth and stutter risk.
+- **Input Buffer** — read ahead about 4 MB from YouTube (default on), so a CDN
+  stall or reconnect does not freeze the stream. Disable if playback fails to
+  start.
 - **Proxy URL** — optional proxy for YouTube requests.
 
 ## Screenshots

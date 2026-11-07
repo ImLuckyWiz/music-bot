@@ -5,8 +5,8 @@ type TSupportedVideoCodec = Exclude<TVideoCodec, "unsupported">;
 const H264_PAYLOAD_TYPE = 102;
 const VP9_PAYLOAD_TYPE = 103;
 
-const MAX_RESOLUTIONS = [720, 1080, 1440] as const;
-const DEFAULT_MAX_RESOLUTION = 1080;
+const MAX_RESOLUTIONS = [480, 720, 1080, 1440] as const;
+const DEFAULT_MAX_RESOLUTION = 720;
 
 const VIDEO_RTCP_FEEDBACK = [
   { type: "nack" },
@@ -42,7 +42,7 @@ const buildVideoRtpCodecs = (codec: TSupportedVideoCodec) =>
         },
       ];
 
-/** accepts "1080p", "1080" or " 720P "; anything else falls back to 1080 */
+/** accepts "1080p", "1080" or " 720P "; anything else falls back to the default */
 const parseMaxResolution = (raw: unknown): number => {
   const match = String(raw ?? "").match(/\d{3,4}/);
   const value = match ? Number(match[0]) : NaN;

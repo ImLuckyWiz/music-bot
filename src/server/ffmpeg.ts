@@ -33,6 +33,8 @@ type TMusicOptions = {
   videoSsrc?: number;
   videoRtpPort?: number;
 
+  /** read http inputs through ffmpeg's async protocol, a ~4 MB read-ahead buffer */
+  bufferInput?: boolean;
   volume?: number; // 0-100, default 100
   bitrate?: string;
   proxy?: string;
@@ -157,6 +159,14 @@ const spawnMusicStream = async (
       "1",
       "-reconnect_delay_max",
       "5",
+      // googlevideo resets long connections: retry those and 4xx/5xx instead of ending the track
+      "-reconnect_on_network_error",
+      "1",
+      "-reconnect_on_http_error",
+      "4xx,5xx",
+      // a connection that goes silent without a reset would otherwise hang forever (microseconds)
+      "-rw_timeout",
+      "15000000",
     ];
 
     if (options.proxy) {
@@ -280,6 +290,11 @@ const spawnMusicStream = async (
     `rtp://${options.rtpHost}:${options.audioRtpPort}?pkt_size=1200`,
   ];
 
+  // the async protocol reads ahead into a 4 MB ring buffer on its own thread,
+  // so a CDN stall or reconnect drains the buffer instead of stalling the stream
+  const bufferedUrl = (url: string): string =>
+    options.bufferInput && /^https?:\/\//.test(url) ? `async:${url}` : url;
+
   // -re paces each input to real time, so both inputs need their own
   const pacedInput = (url: string): string[] => [
     ...reconnectArgs(inputUserAgent),
@@ -287,7 +302,7 @@ const spawnMusicStream = async (
     "-readrate_initial_burst",
     "0",
     "-i",
-    url,
+    bufferedUrl(url),
   ];
 
   const commonArgs = ["-hide_banner", "-nostats", "-loglevel", "level+warning"];
@@ -330,7 +345,7 @@ const spawnMusicStream = async (
       "-readrate_initial_burst",
       "0",
       "-i",
-      inputSource,
+      bufferedUrl(inputSource),
       "-vn",
       ...audioOutputArgs,
     ];

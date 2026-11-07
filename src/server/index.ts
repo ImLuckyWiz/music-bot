@@ -54,6 +54,8 @@ type PlaybackSettings = {
   proxy?: string;
   streamVideo: boolean;
   maxResolution: number;
+  limitFps: boolean;
+  bufferInput: boolean;
 };
 
 /** the height to resolve for: 0 means audio only */
@@ -69,6 +71,7 @@ const buildYtDlpOptions = (
   debug: ctx.logger.debug,
   proxy: options.proxy,
   maxHeight: getVideoHeight(options),
+  limitFps: options.limitFps,
 });
 
 let binariesReady = false;
@@ -503,6 +506,7 @@ const startMusicStream = async (
       volume: state.volume,
       bitrate: options.bitrate,
       proxy: options.proxy,
+      bufferInput: options.bufferInput,
       preResolvedTrack: trackInfo,
       log: ctx.logger.log,
       error: ctx.logger.error,
@@ -694,6 +698,22 @@ const onLoad = async (ctx: TMusicContext) => {
       defaultValue: `${DEFAULT_MAX_RESOLUTION}p`,
     },
     {
+      key: "limitFps",
+      name: "Limit to 30 fps",
+      description:
+        "Prefer 30 fps (or lower) video. Video is copied untouched, so 60 fps roughly doubles the bandwidth and the chance of stutter. Falls back to 60 fps when nothing else exists.",
+      type: "boolean",
+      defaultValue: true,
+    },
+    {
+      key: "bufferInput",
+      name: "Input Buffer",
+      description:
+        "Read ahead about 4 MB from YouTube before sending, so a CDN stall or reconnect does not freeze the stream. Disable if playback fails to start.",
+      type: "boolean",
+      defaultValue: true,
+    },
+    {
       key: "proxy",
       name: "Proxy URL",
       description:
@@ -708,6 +728,8 @@ const onLoad = async (ctx: TMusicContext) => {
     proxy: settings.get("proxy"),
     streamVideo: parseBooleanSetting(settings.get("streamVideo"), true),
     maxResolution: parseMaxResolution(settings.get("maxResolution")),
+    limitFps: parseBooleanSetting(settings.get("limitFps"), true),
+    bufferInput: parseBooleanSetting(settings.get("bufferInput"), true),
   });
 
   ctx.events.on("voice:runtime_closed", ({ channelId }) => {

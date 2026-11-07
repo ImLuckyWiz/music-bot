@@ -43,6 +43,8 @@ type TYtDlpOptions = {
   proxy?: string;
   /** when set, resolve a video + audio pair up to this height instead of audio only */
   maxHeight?: number;
+  /** prefer 30fps or lower video, which needs far less bandwidth */
+  limitFps?: boolean;
 };
 
 const AUDIO_FORMAT_SELECTOR = "bestaudio[ext=webm]/bestaudio/best";
@@ -50,13 +52,23 @@ const AUDIO_FORMAT_SELECTOR = "bestaudio[ext=webm]/bestaudio/best";
 /**
  * H.264 first up to 1080p for the widest client support; above 1080p only VP9
  * exists on YouTube, so it leads there to avoid settling for a 1080p H.264.
+ * Video is forwarded untouched, so a 60fps source costs roughly double the
+ * bitrate and packet rate: with limitFps, 30fps (or lower) variants are tried
+ * first and 60fps is only the fallback.
  */
-const buildVideoFormatSelector = (maxHeight: number): string => {
-  const h264 = `bestvideo[vcodec^=avc1][height<=${maxHeight}]+bestaudio`;
-  const vp9 = `bestvideo[vcodec^=vp09][height<=${maxHeight}]+bestaudio`;
-  const ordered = maxHeight > 1080 ? [vp9, h264] : [h264, vp9];
+const buildVideoFormatSelector = (
+  maxHeight: number,
+  limitFps: boolean,
+): string => {
+  const variant = (codec: string, fps: boolean) =>
+    `bestvideo[vcodec^=${codec}][height<=${maxHeight}]${fps ? "[fps<=30]" : ""}+bestaudio`;
+  const codecs = maxHeight > 1080 ? ["vp09", "avc1"] : ["avc1", "vp09"];
+  const fpsPasses = limitFps ? [true, false] : [false];
+  const video = fpsPasses.flatMap((fps) =>
+    codecs.map((codec) => variant(codec, fps)),
+  );
 
-  return [...ordered, `best[height<=${maxHeight}]`, "best"].join("/");
+  return [...video, `best[height<=${maxHeight}]`, "best"].join("/");
 };
 
 const YT_DLP_COMMAND_TIMEOUT_MS = 25000;
@@ -350,7 +362,7 @@ const resolveYouTubeTrack = async (
     ytDlpPath,
     ...base,
     "-f",
-    maxHeight > 0 ? buildVideoFormatSelector(maxHeight) : AUDIO_FORMAT_SELECTOR,
+    maxHeight > 0 ? buildVideoFormatSelector(maxHeight, options.limitFps ?? true) : AUDIO_FORMAT_SELECTOR,
     "--dump-single-json",
     "--skip-download",
     sourceUrl,
