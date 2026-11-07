@@ -55,9 +55,10 @@ jobs:
           META="dist/${VERSION}.json"
 
           cat << 'EOF' > release_notes.md
-          ### Music Bot Video Streaming Improvements v${VERSION}
-          - **RTP Socket Send Buffer**: Configured 1 MB socket buffer (`buffer_size=1048576`) on RTP outputs to eliminate packet drops during video keyframe packet bursts.
-          - **Input Buffer Setting**: Marked the `async:` input buffer as experimental and disabled it by default to avoid premature track resets on servers with sensitive TLS reconnects.
+          ### Music Bot Chunked Input Proxy v${VERSION}
+          - **Local Chunk Proxy (Experimental)**: Fetches YouTube media in 10 MB ranged requests over a local `127.0.0.1` proxy with proactive read-ahead and retry handling, eliminating GoogleVideo connection dropouts.
+          - **Mid-Stream URL Refresh**: Re-resolves expired CDN URLs on the fly if YouTube links expire during long videos.
+          - **Seamless Direct Fallback**: Reverts transparently to direct input connections if the proxy fails to initialize.
           - **Built for Sharkord**: Unpacks to `music-bot/` containing `manifest.json`, `client/index.js`, and `server/index.js`.
           EOF
 
@@ -68,6 +69,6 @@ jobs:
           else
             echo "Creating new release $TAG..."
             gh release create "$TAG" "$ARCHIVE" "$META" \
-              --title "v${VERSION} - RTP Buffer Optimization" \
+              --title "v${VERSION} - Chunked Input Proxy" \
               --notes-file release_notes.md
           fi

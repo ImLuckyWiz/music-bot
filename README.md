@@ -78,8 +78,10 @@ download leaves the working one untouched and playback is not interrupted.
   above 1080p is VP9 only. Applies from the next track on.
 - **Limit to 30 fps** — prefer 30 fps or lower video (default on). Video is
   copied untouched, so 60 fps roughly doubles bandwidth and stutter risk.
-- **Input Buffer** — experimental, off by default. Reads ahead about 4 MB from
-  YouTube, but on some servers a TLS reset during a reconnect ends the track.
+- **Chunked Input** — experimental, off by default. Fetches YouTube media in
+  10 MB ranged requests through a local proxy on `127.0.0.1`, with read-ahead
+  and automatic retries, instead of one long connection that YouTube may reset.
+  Falls back to a direct connection if the proxy cannot start for a track.
 - **Proxy URL** — optional proxy for YouTube requests.
 
 ## Screenshots

@@ -1,3 +1,4 @@
+import { createProxySession, type TProxySessionHandle } from "./chunk-proxy";
 import { getFfmpegBinaryPath } from "./paths";
 import {
   isYouTubeUrl,
@@ -10,6 +11,8 @@ import {
 type TSpawnedStreamProcess = {
   ffmpeg: ReturnType<typeof Bun.spawn>;
   ytDlp: ReturnType<typeof Bun.spawn> | null;
+  /** local chunk proxy sessions feeding ffmpeg, closed with it */
+  inputSessions: TProxySessionHandle[];
 };
 
 type TMusicStreamResult = {
@@ -33,8 +36,10 @@ type TMusicOptions = {
   videoSsrc?: number;
   videoRtpPort?: number;
 
-  /** read http inputs through ffmpeg's async protocol, a ~4 MB read-ahead buffer */
-  bufferInput?: boolean;
+  /** fetch YouTube media through the local chunk proxy instead of directly */
+  chunkedInput?: boolean;
+  /** needed to re-resolve a track whose URL expired mid-stream */
+  limitFps?: boolean;
   volume?: number; // 0-100, default 100
   bitrate?: string;
   proxy?: string;
@@ -155,7 +160,10 @@ const spawnMusicStream = async (
   let videoCodec: TYtDlpTrackInfo["videoCodec"];
   let inputUserAgent: string | undefined;
 
-  const reconnectArgs = (userAgent?: string): string[] => {
+  const isLocalUrl = (url: string): boolean =>
+    url.startsWith("http://127.0.0.1:");
+
+  const reconnectArgs = (userAgent?: string, local = false): string[] => {
     const args = [
       "-reconnect",
       "1",
@@ -173,15 +181,73 @@ const spawnMusicStream = async (
       "15000000",
     ];
 
-    if (options.proxy) {
+    // the chunk proxy already applies the proxy and the headers upstream
+    if (options.proxy && !local) {
       args.push("-http_proxy", options.proxy);
     }
 
-    if (userAgent) {
+    if (userAgent && !local) {
       args.push("-user_agent", userAgent);
     }
 
     return args;
+  };
+
+  const inputSessions: TProxySessionHandle[] = [];
+
+  const closeInputSessions = (): void => {
+    for (const session of inputSessions) session.close();
+  };
+
+  /** the proxied URL, or the original one if the proxy cannot be set up */
+  const proxiedUrl = async (
+    url: string,
+    label: string,
+    track: TYtDlpTrackInfo,
+    pick: (fresh: TYtDlpTrackInfo) => string | undefined,
+  ): Promise<string> => {
+    if (!options.chunkedInput) return url;
+
+    try {
+      const session = await createProxySession({
+        label,
+        upstreamUrl: url,
+        headers: track.httpHeaders,
+        proxy: options.proxy,
+        log: options.log,
+        error: options.error,
+        debug: options.debug,
+        refreshUrl: async () => {
+          const fresh = await resolveYouTubeTrack(
+            track.webpageUrl ?? options.sourceUrl,
+            {
+              log: options.log,
+              error: options.error,
+              debug: options.debug,
+              proxy: options.proxy,
+              maxHeight: track.resolvedMaxHeight,
+              limitFps: options.limitFps,
+            },
+          );
+          const freshUrl = pick(fresh);
+          const sizeOf = (u?: string) => new URL(u ?? "http://x").searchParams.get("clen");
+
+          // a different size means a different format: splicing it in would corrupt the stream
+          return freshUrl && sizeOf(freshUrl) === sizeOf(url) ? freshUrl : null;
+        },
+      });
+
+      inputSessions.push(session);
+
+      return session.url;
+    } catch (err) {
+      options.error(
+        `[chunk-proxy] ${label}: could not start, reading directly instead`,
+        err,
+      );
+
+      return url;
+    }
   };
 
   if (isYouTubeUrl(options.sourceUrl)) {
@@ -214,15 +280,36 @@ const spawnMusicStream = async (
       trackInfo.videoCodec !== "unsupported"
     ) {
       options.log(`Using direct ${trackInfo.videoCodec} video + audio URLs`);
+
+      const muxed = trackInfo.videoStreamUrl === trackInfo.audioStreamUrl;
+      const videoUrl = await proxiedUrl(
+        trackInfo.videoStreamUrl,
+        muxed ? "video+audio" : "video",
+        trackInfo,
+        (fresh) => fresh.videoStreamUrl,
+      );
+
       videoInputs = {
-        video: trackInfo.videoStreamUrl,
-        audio: trackInfo.audioStreamUrl,
+        video: videoUrl,
+        audio: muxed
+          ? videoUrl
+          : await proxiedUrl(
+              trackInfo.audioStreamUrl,
+              "audio",
+              trackInfo,
+              (fresh) => fresh.audioStreamUrl,
+            ),
       };
       videoCodec = trackInfo.videoCodec;
     } else if (trackInfo.streamUrl) {
       options.log("Using direct stream URL for YouTube audio");
-      inputSource = trackInfo.streamUrl;
-      inputArgs = reconnectArgs(inputUserAgent);
+      inputSource = await proxiedUrl(
+        trackInfo.streamUrl,
+        "audio",
+        trackInfo,
+        (fresh) => fresh.streamUrl,
+      );
+      inputArgs = reconnectArgs(inputUserAgent, isLocalUrl(inputSource));
     } else {
       options.log("Direct stream URL unavailable, falling back to yt-dlp pipe");
       ytDlpProcess = await spawnYouTubeAudioPipe(
@@ -294,19 +381,14 @@ const spawnMusicStream = async (
     `rtp://${options.rtpHost}:${options.audioRtpPort}?${RTP_OUTPUT_QUERY}`,
   ];
 
-  // the async protocol reads ahead into a 4 MB ring buffer on its own thread,
-  // so a CDN stall or reconnect drains the buffer instead of stalling the stream
-  const bufferedUrl = (url: string): string =>
-    options.bufferInput && /^https?:\/\//.test(url) ? `async:${url}` : url;
-
   // -re paces each input to real time, so both inputs need their own
   const pacedInput = (url: string): string[] => [
-    ...reconnectArgs(inputUserAgent),
+    ...reconnectArgs(inputUserAgent, isLocalUrl(url)),
     "-re",
     "-readrate_initial_burst",
     "0",
     "-i",
-    bufferedUrl(url),
+    url,
   ];
 
   const commonArgs = ["-hide_banner", "-nostats", "-loglevel", "level+warning"];
@@ -349,7 +431,7 @@ const spawnMusicStream = async (
       "-readrate_initial_burst",
       "0",
       "-i",
-      bufferedUrl(inputSource),
+      inputSource,
       "-vn",
       ...audioOutputArgs,
     ];
@@ -358,12 +440,19 @@ const spawnMusicStream = async (
   options.debug("Starting music stream with FFmpeg...");
   options.debug("Command:", ffmpegPath, ...ffmpegArgs);
 
-  const ffmpegProcess = Bun.spawn({
-    cmd: [ffmpegPath, ...ffmpegArgs],
-    stdout: "ignore",
-    stderr: "pipe",
-    stdin: ytDlpProcess?.stdout ?? "ignore",
-  });
+  let ffmpegProcess: ReturnType<typeof Bun.spawn>;
+
+  try {
+    ffmpegProcess = Bun.spawn({
+      cmd: [ffmpegPath, ...ffmpegArgs],
+      stdout: "ignore",
+      stderr: "pipe",
+      stdin: ytDlpProcess?.stdout ?? "ignore",
+    });
+  } catch (err) {
+    closeInputSessions();
+    throw err;
+  }
 
   if (ffmpegProcess.stderr) {
     readLines(ffmpegProcess.stderr, (line) =>
@@ -389,6 +478,8 @@ const spawnMusicStream = async (
   }
 
   ffmpegProcess.exited.then(() => {
+    closeInputSessions();
+
     if (ytDlpProcess) {
       terminateProcess(ytDlpProcess);
     }
@@ -397,7 +488,7 @@ const spawnMusicStream = async (
   });
 
   return {
-    process: { ffmpeg: ffmpegProcess, ytDlp: ytDlpProcess },
+    process: { ffmpeg: ffmpegProcess, ytDlp: ytDlpProcess, inputSessions },
     title,
     thumbnailUrl,
     durationSeconds,
@@ -410,6 +501,8 @@ const killMusicStream = (process: TSpawnedStreamProcess | null): void => {
   if (!process) return;
 
   terminateProcess(process.ffmpeg);
+
+  for (const session of process.inputSessions) session.close();
 
   if (process.ytDlp) {
     terminateProcess(process.ytDlp);

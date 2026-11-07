@@ -12,6 +12,7 @@ import {
   isBinaryDownloading,
   type TBinaryName,
 } from "./downloads";
+import { stopChunkProxy } from "./chunk-proxy";
 import { killMusicStream, spawnMusicStream } from "./ffmpeg";
 import { setDataDir } from "./paths";
 import {
@@ -55,7 +56,7 @@ type PlaybackSettings = {
   streamVideo: boolean;
   maxResolution: number;
   limitFps: boolean;
-  bufferInput: boolean;
+  chunkedInput: boolean;
 };
 
 /** the height to resolve for: 0 means audio only */
@@ -506,7 +507,8 @@ const startMusicStream = async (
       volume: state.volume,
       bitrate: options.bitrate,
       proxy: options.proxy,
-      bufferInput: options.bufferInput,
+      chunkedInput: options.chunkedInput,
+      limitFps: options.limitFps,
       preResolvedTrack: trackInfo,
       log: ctx.logger.log,
       error: ctx.logger.error,
@@ -529,6 +531,9 @@ const startMusicStream = async (
         }
       },
     });
+
+    // tracked right away, so a failure below still tears ffmpeg and its proxy down
+    state.ffmpegProcess = result.process;
 
     state.streamHandle = ctx.voice.createStream({
       key: "music",
@@ -706,10 +711,10 @@ const onLoad = async (ctx: TMusicContext) => {
       defaultValue: true,
     },
     {
-      key: "bufferInput",
-      name: "Input Buffer",
+      key: "chunkedInput",
+      name: "Chunked Input",
       description:
-        "Experimental. Read ahead about 4 MB from YouTube through ffmpeg's async protocol. On some servers a TLS reset during a reconnect ends the track, so it is off by default.",
+        "Fetch YouTube media in short ranged requests through a local proxy, with read-ahead and automatic retries, instead of one long connection that YouTube may reset. Off by default while it is being tested.",
       type: "boolean",
       defaultValue: false,
     },
@@ -729,7 +734,7 @@ const onLoad = async (ctx: TMusicContext) => {
     streamVideo: parseBooleanSetting(settings.get("streamVideo"), true),
     maxResolution: parseMaxResolution(settings.get("maxResolution")),
     limitFps: parseBooleanSetting(settings.get("limitFps"), true),
-    bufferInput: parseBooleanSetting(settings.get("bufferInput"), false),
+    chunkedInput: parseBooleanSetting(settings.get("chunkedInput"), false),
   });
 
   ctx.events.on("voice:runtime_closed", ({ channelId }) => {
@@ -1033,6 +1038,7 @@ const onUnload = (ctx: UnloadPluginContext) => {
   }
 
   clearAllChannelStates();
+  stopChunkProxy();
 
   ctx.logger.log("Music Bot unloaded");
 };
