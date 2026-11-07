@@ -94,30 +94,16 @@ await fs.copyFile(manifestPath, path.join(outDir, "manifest.json"));
 const tarName = `${manifest.id}-${manifest.version}.tar.gz`;
 const archivePath = path.join(distDir, tarName);
 
-console.log(`Packaging archive ${tarName}...`);
-try {
-  const glob = new Bun.Glob(`${outDir}/**/*`);
-  const files: Record<string, ArrayBuffer> = {};
-
-  for await (const filePath of glob.scan(".")) {
-    const rel = path.relative(distDir, filePath).replace(/\\/g, "/");
-    files[rel] = await Bun.file(filePath).arrayBuffer();
-  }
-
-  const archive = new Bun.Archive(files, { compress: "gzip" });
-  await Bun.write(archivePath, archive);
-} catch (archiveErr) {
-  console.log("Bun.Archive unavailable or failed, falling back to system tar:", archiveErr);
-  const proc = Bun.spawn({
-    cmd: ["tar", "-czf", archivePath, "-C", distDir, manifest.id],
-    stdout: "inherit",
-    stderr: "inherit",
-  });
-  const exitCode = await proc.exited;
-  if (exitCode !== 0) {
-    console.error(`Tar packaging failed with exit code ${exitCode}`);
-    process.exit(1);
-  }
+console.log(`Packaging archive ${tarName} using tar -czf...`);
+const proc = Bun.spawn({
+  cmd: ["tar", "-czf", archivePath, "-C", distDir, manifest.id],
+  stdout: "inherit",
+  stderr: "inherit",
+});
+const exitCode = await proc.exited;
+if (exitCode !== 0) {
+  console.error(`Tar packaging failed with exit code ${exitCode}`);
+  process.exit(1);
 }
 
 // 5. Version metadata file
