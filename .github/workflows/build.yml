@@ -55,11 +55,10 @@ jobs:
           META="dist/${VERSION}.json"
 
           cat << 'EOF' > release_notes.md
-          ### Music Bot Video Stutter Fix & Buffer Optimization v${VERSION}
-          - **Video Stutter Elimination**: Prioritizes VP9 streams first across all resolutions. Unlike YouTube's H.264 (which uses B-frames that cause backwards RTP timestamp jumps in WebRTC), VP9 has no display-order reordering and plays completely smoothly.
-          - **Zero B-Frame H.264 Fallback**: Re-encodes H.264 fallback streams with `-bf 0` (baseline, zero B-frames) to keep RTP timestamps strictly monotonic.
-          - **Pipelined Chunk Proxy**: Switched chunk proxy to 2 MB chunks with 3 read-ahead chunks in flight to bypass GoogleVideo playback-speed throttling.
-          - **Initial Read Burst**: Configured `-readrate_initial_burst 1` on FFmpeg inputs so the demuxer buffer fills immediately on startup.
+          ### Music Bot HTTPS Protocol & Codec Match Optimization v${VERSION}
+          - **HTTPS-Only Protocol Filter**: Enforces `protocol=https` in format selectors so YouTube's HLS (m3u8) copies aren't picked up (which would bypass the chunk proxy and start video seconds after audio).
+          - **VP9 Short Name Matching**: Matches both `vp09` and `vp9` format identifiers across all resolution selector passes.
+          - **Diagnostics Format Logging**: Reports format ID and protocol alongside resolution and codec during track resolution.
           - **Built for Sharkord**: Unpacks to `music-bot/` containing `manifest.json`, `client/index.js`, and `server/index.js`.
           EOF
 
@@ -70,6 +69,6 @@ jobs:
           else
             echo "Creating new release $TAG..."
             gh release create "$TAG" "$ARCHIVE" "$META" \
-              --title "v${VERSION} - Video Stutter Fix & Buffer Optimization" \
+              --title "v${VERSION} - Protocol & Codec Optimization" \
               --notes-file release_notes.md
           fi

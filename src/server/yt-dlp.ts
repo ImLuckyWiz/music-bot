@@ -24,6 +24,9 @@ type TYtDlpTrackInfo = {
   videoCodec?: TVideoCodec;
   videoWidth?: number;
   videoHeight?: number;
+  /** yt-dlp format id and protocol of the video, for diagnostics */
+  videoFormatId?: string;
+  videoProtocol?: string;
   /** true only when a supported video codec and both stream URLs are present */
   hasVideo: boolean;
   /** the max height this track was resolved for, 0 meaning audio only */
@@ -63,9 +66,13 @@ const buildVideoFormatSelector = (
   maxHeight: number,
   limitFps: boolean,
 ): string => {
+  // protocol=https only: YouTube also lists HLS (m3u8) copies of the same
+  // codecs, and FFmpeg's HLS demuxer fetches segments on its own, bypassing the
+  // chunk proxy and starting video seconds after the audio
   const variant = (codec: string, fps: boolean) =>
-    `bestvideo[vcodec^=${codec}][height<=${maxHeight}]${fps ? "[fps<=30]" : ""}+bestaudio`;
-  const codecs = ["vp09", "avc1"];
+    `bestvideo[protocol=https][vcodec^=${codec}][height<=${maxHeight}]${fps ? "[fps<=30]" : ""}+bestaudio[protocol=https]`;
+  // some formats report the short name "vp9" instead of "vp09.xx"
+  const codecs = ["vp09", "vp9", "avc1"];
   const fpsPasses = limitFps ? [true, false] : [false];
   const video = fpsPasses.flatMap((fps) =>
     codecs.map((codec) => variant(codec, fps)),
@@ -216,6 +223,8 @@ type TRawFormat = {
   width?: unknown;
   height?: unknown;
   http_headers?: unknown;
+  format_id?: unknown;
+  protocol?: unknown;
 };
 
 const hasCodec = (codec: unknown): boolean =>
@@ -349,6 +358,8 @@ const parseYtDlpTrackInfo = (
     videoCodec: wantsVideo ? videoCodec : undefined,
     videoWidth: wantsVideo ? toPositiveInt(videoFormat?.width) : undefined,
     videoHeight: wantsVideo ? toPositiveInt(videoFormat?.height) : undefined,
+    videoFormatId: wantsVideo && videoFormat?.format_id != null ? String(videoFormat.format_id) : undefined,
+    videoProtocol: wantsVideo && typeof videoFormat?.protocol === "string" ? videoFormat.protocol : undefined,
     hasVideo,
     resolvedMaxHeight: maxHeight,
   };
@@ -388,7 +399,7 @@ const resolveYouTubeTrack = async (
   if (maxHeight > 0) {
     options.log(
       track.hasVideo
-        ? `Resolved ${track.videoCodec} video ${track.videoWidth ?? "?"}x${track.videoHeight ?? "?"}`
+        ? `Resolved ${track.videoCodec} video ${track.videoWidth ?? "?"}x${track.videoHeight ?? "?"} (format ${track.videoFormatId ?? "?"}, ${track.videoProtocol ?? "?"})`
         : `No streamable video (codec: ${track.videoCodec ?? "none"}); audio only`,
     );
   }
