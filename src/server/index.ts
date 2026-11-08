@@ -629,12 +629,14 @@ const startMusicStream = async (
           state.endAction === "next" ||
           (state.endAction !== "stop" && (queueHasItems || state.autoplay));
 
+        const savedInvokerUserId = state.currentInvokerUserId ?? 0;
         state.endAction = "none";
         cleanupChannel(ctx, channelId);
 
         if (shouldStartNext) {
-          playNextInQueue(ctx, channelId, options).catch((err: unknown) =>
-            ctx.logger.error("Failed to start the next track", err),
+          playNextInQueue(ctx, channelId, options, savedInvokerUserId).catch(
+            (err: unknown) =>
+              ctx.logger.error("Failed to start the next track", err),
           );
         }
       },
@@ -692,6 +694,7 @@ const playNextInQueue = async (
   ctx: TMusicContext,
   channelId: number,
   options: PlaybackSettings,
+  fallbackInvokerUserId?: number,
 ): Promise<string> => {
   const nextItem = takeNextFromQueue(channelId);
 
@@ -713,7 +716,8 @@ const playNextInQueue = async (
 
       if (autoplayTrack && autoplayTrack.webpageUrl) {
         ctx.logger.log("Autoplay starting next track:", autoplayTrack.title);
-        const invokerUserId = state.currentInvokerUserId ?? 0;
+        const invokerUserId =
+          fallbackInvokerUserId ?? state.currentInvokerUserId ?? 0;
         return startMusicStream(
           ctx,
           channelId,
@@ -837,12 +841,14 @@ const seekCurrentStream = async (
           state.endAction === "next" ||
           (state.endAction !== "stop" && (queueHasItems || state.autoplay));
 
+        const savedInvokerUserId = state.currentInvokerUserId ?? 0;
         state.endAction = "none";
         cleanupChannel(ctx, channelId);
 
         if (shouldStartNext) {
-          playNextInQueue(ctx, channelId, options).catch((err: unknown) =>
-            ctx.logger.error("Failed to start the next track", err),
+          playNextInQueue(ctx, channelId, options, savedInvokerUserId).catch(
+            (err: unknown) =>
+              ctx.logger.error("Failed to start the next track", err),
           );
         }
       },
@@ -1037,21 +1043,20 @@ const onLoad = async (ctx: TMusicContext) => {
         throw new Error("Music is still starting. Try again in a moment.");
       }
 
-      if (!state.streamActive) {
-        const message = await playNextInQueue(
-          ctx,
-          channelId,
-          getPlaybackSettings(channelId),
-        );
+      const invokerUserId = state.currentInvokerUserId ?? invoker.id;
 
-        return buildActionResult(ctx, message, channelId);
+      if (state.streamActive) {
+        cleanupChannel(ctx, channelId);
       }
 
-      // the ffmpeg exit handler picks the next track up
-      state.endAction = "next";
-      cleanupChannel(ctx, channelId);
+      const message = await playNextInQueue(
+        ctx,
+        channelId,
+        getPlaybackSettings(channelId),
+        invokerUserId,
+      );
 
-      return buildActionResult(ctx, "Skipping current track...", channelId);
+      return buildActionResult(ctx, message, channelId);
     },
   });
 
@@ -1073,37 +1078,28 @@ const onLoad = async (ctx: TMusicContext) => {
         throw new Error("Queue item not found.");
       }
 
-      if (!state.streamActive) {
-        let preResolved = selectedItem.resolvedTrack ?? undefined;
-
-        if (!preResolved && selectedItem.prefetchPromise) {
-          try {
-            preResolved = await selectedItem.prefetchPromise;
-          } catch {}
-        }
-
-        const message = await startMusicStream(
-          ctx,
-          channelId,
-          selectedItem.sourceUrl,
-          getPlaybackSettings(channelId),
-          selectedItem.invokerUserId,
-          preResolved,
-        );
-
-        return buildActionResult(ctx, message, channelId);
+      if (state.streamActive) {
+        cleanupChannel(ctx, channelId);
       }
 
-      state.queue.unshift(selectedItem);
-      triggerPrefetchNext(ctx, channelId, getPlaybackSettings(channelId));
-      state.endAction = "next";
-      cleanupChannel(ctx, channelId);
+      let preResolved = selectedItem.resolvedTrack ?? undefined;
 
-      return buildActionResult(
+      if (!preResolved && selectedItem.prefetchPromise) {
+        try {
+          preResolved = await selectedItem.prefetchPromise;
+        } catch {}
+      }
+
+      const message = await startMusicStream(
         ctx,
-        `Jumping to: ${formatSourceLabel(selectedItem.sourceUrl)}`,
         channelId,
+        selectedItem.sourceUrl,
+        getPlaybackSettings(channelId),
+        selectedItem.invokerUserId,
+        preResolved,
       );
+
+      return buildActionResult(ctx, message, channelId);
     },
   });
 
