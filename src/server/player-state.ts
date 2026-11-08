@@ -37,6 +37,7 @@ type ChannelStreamState = {
   playbackStartedAtEpochMs: number | null;
   currentTrackDurationSeconds: number | null;
   volume: number;
+  volumeControlPort: number | null;
   queue: TQueueItem[];
   endAction: "none" | "next" | "stop";
   autoplay: boolean;
@@ -72,6 +73,7 @@ const createInitialState = (): ChannelStreamState => ({
   playbackStartedAtEpochMs: null,
   currentTrackDurationSeconds: null,
   volume: DEFAULT_VOLUME,
+  volumeControlPort: null,
   queue: [],
   endAction: "none",
   autoplay: false,
@@ -160,6 +162,7 @@ const emptyPlayerStateSnapshot = (): PlayerStateSnapshot => ({
   playbackStartedAtEpochMs: null,
   currentTrackDurationSeconds: null,
   volume: DEFAULT_VOLUME,
+  volumeControlPort: null,
   queue: [],
   autoplay: false,
   videoEnabled: false,

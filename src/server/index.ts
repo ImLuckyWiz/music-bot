@@ -27,6 +27,7 @@ import {
   removeQueueItem,
   takeNextFromQueue,
 } from "./player-state";
+import { sendFfmpegVolumeCommand } from "./volume-control";
 import {
   buildVideoRtpCodecs,
   DEFAULT_MAX_RESOLUTION,
@@ -141,6 +142,7 @@ const cleanupChannel = (ctx: TCleanupContext, channelId: number): void => {
   state.currentThumbnailUrl = null;
   state.playbackStartedAtEpochMs = null;
   state.currentTrackDurationSeconds = null;
+  state.volumeControlPort = null;
 
   publishPlayerState(ctx, channelId);
 };
@@ -580,12 +582,14 @@ const startMusicStream = async (
     }
 
     state.ffmpegProcess = result.process;
+    state.volumeControlPort = result.controlPort ?? null;
     state.currentSong = result.title;
     state.currentInvokerUserId = invokerUserId;
     state.currentThumbnailUrl = result.thumbnailUrl ?? null;
     state.playbackStartedAtEpochMs = Date.now();
     state.currentTrackDurationSeconds = result.durationSeconds ?? null;
     state.streamActive = true;
+    state.streamStarting = false;
     state.endAction = "none";
 
     publishPlayerState(ctx, channelId);
@@ -917,7 +921,7 @@ const onLoad = async (ctx: TMusicContext) => {
 
   ctx.actions.register({
     name: "setVolume",
-    description: "Sets the channel's master volume, used by the next track",
+    description: "Sets the channel's master volume live for active and upcoming tracks",
     requires: Permission.JOIN_VOICE_CHANNELS,
     executes: async (invoker, payload) => {
       const channelId = requireVoiceChannelId(
@@ -930,14 +934,20 @@ const onLoad = async (ctx: TMusicContext) => {
       }
 
       const volume = Math.min(100, Math.max(0, Math.round(payload.volume)));
+      const state = getState(channelId);
+      state.volume = volume;
 
-      getState(channelId).volume = volume;
+      if (state.streamActive && state.volumeControlPort) {
+        sendFfmpegVolumeCommand(state.volumeControlPort, volume / 100).catch((err) => {
+          ctx.logger.error("Failed to update live FFmpeg volume", err);
+        });
+      }
 
-      // ffmpeg bakes the volume filter in at spawn time, so the track already
-      // playing keeps the level it started with
+      publishPlayerState(ctx, channelId);
+
       return buildActionResult(
         ctx,
-        `Volume set to ${volume}%. It applies from the next track.`,
+        `Volume set to ${volume}%.`,
         channelId,
       );
     },

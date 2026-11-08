@@ -1,5 +1,6 @@
 import { createProxySession, type TProxySessionHandle } from "./chunk-proxy";
 import { getFfmpegBinaryPath } from "./paths";
+import { getAvailablePort } from "./volume-control";
 import {
   isYouTubeUrl,
   logYtDlpLine,
@@ -17,6 +18,7 @@ type TSpawnedStreamProcess = {
 
 type TMusicStreamResult = {
   process: TSpawnedStreamProcess;
+  controlPort?: number;
   title: string;
   thumbnailUrl?: string;
   durationSeconds?: number;
@@ -371,9 +373,20 @@ const spawnMusicStream = async (
 
   options.debug("Using audio bitrate:", audioBitrate);
 
+  let controlPort: number | undefined;
+  try {
+    controlPort = await getAvailablePort();
+  } catch (err) {
+    options.debug("Could not allocate port for azmq volume control:", err);
+  }
+
+  const audioFilter = controlPort
+    ? `volume=${volumeLevel},azmq=bind_address=tcp\\\\://127.0.0.1\\\\:${controlPort}`
+    : `volume=${volumeLevel}`;
+
   const audioOutputArgs = [
     "-af",
-    `volume=${volumeLevel}`,
+    audioFilter,
     "-c:a",
     "libopus",
     "-ar",
@@ -546,6 +559,7 @@ const spawnMusicStream = async (
 
   return {
     process: { ffmpeg: ffmpegProcess, ytDlp: ytDlpProcess, inputSessions },
+    controlPort,
     title,
     thumbnailUrl,
     durationSeconds,

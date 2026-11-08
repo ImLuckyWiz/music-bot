@@ -50,10 +50,21 @@ const PlayerPanel = ({ controller }: PlayerPanelProps) => {
 
   // held locally while dragging, so the slider does not fight its own pushes
   const [volume, setVolumeDraft] = useState(player.volume);
+  const volumeDebounceTimer = useRef<number | null>(null);
 
   const addedBy = useUserName(player.currentInvokerUserId);
 
   useEffect(() => setVolumeDraft(player.volume), [player.volume]);
+
+  const handleVolumeChange = (newVolume: number) => {
+    setVolumeDraft(newVolume);
+    if (volumeDebounceTimer.current !== null) {
+      window.clearTimeout(volumeDebounceTimer.current);
+    }
+    volumeDebounceTimer.current = window.setTimeout(() => {
+      setVolume(newVolume);
+    }, 80);
+  };
 
   useEffect(() => {
     if (!isBusy && !player.streamStarting) {
@@ -120,7 +131,7 @@ const PlayerPanel = ({ controller }: PlayerPanelProps) => {
 
   const isPlaying = player.streamActive;
   const isLoading =
-    player.streamStarting || (isBusy && !isPlaying && player.queue.length === 0);
+    !isPlaying && (player.streamStarting || (isBusy && player.queue.length === 0));
   const canSubmit = query.trim() !== "" && !isBusy && can.play;
 
   const submit = (overrideQuery?: string) => {
@@ -289,10 +300,12 @@ const PlayerPanel = ({ controller }: PlayerPanelProps) => {
           <div className="mb-sub">
             {!can.play
               ? "You cannot control the player"
-              : isLoading && !isPlaying
-                ? "Connecting to audio stream..."
-                : isPlaying && addedBy
+              : isPlaying
+                ? addedBy
                   ? `Added by ${addedBy}`
+                  : "Playing"
+                : isLoading
+                  ? "Connecting to audio stream..."
                   : "Search above to start the queue"}
           </div>
         </div>
@@ -399,10 +412,15 @@ const PlayerPanel = ({ controller }: PlayerPanelProps) => {
             value={volume}
             style={{ "--mb-volume": `${volume}%` } as CSSProperties}
             aria-label="Master volume"
-            title={`Master volume ${volume}% — applies from the next track`}
+            title={`Master volume: ${volume}%`}
             disabled={!can.volume}
-            onChange={(event) => setVolumeDraft(Number(event.target.value))}
-            onPointerUp={() => setVolume(volume)}
+            onChange={(event) => handleVolumeChange(Number(event.target.value))}
+            onPointerUp={() => {
+              if (volumeDebounceTimer.current !== null) {
+                window.clearTimeout(volumeDebounceTimer.current);
+              }
+              setVolume(volume);
+            }}
             onKeyUp={() => setVolume(volume)}
           />
         </div>
