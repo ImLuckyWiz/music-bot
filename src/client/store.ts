@@ -15,7 +15,7 @@ const useUserName = (userId: number | null): string | undefined => {
 
   if (userId === null) return undefined;
 
-  return users.find((user) => user.id === userId)?.name;
+  return users.find((user: any) => user.id === userId)?.name;
 };
 
 export { callAction, useCurrentVoiceChannelId, useUserName };

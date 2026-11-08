@@ -69,6 +69,7 @@ const usePlayer = () => {
     remove: useCanUseAction<TSharkord>("removeQueueItem"),
     autoplay: useCanUseAction<TSharkord>("toggleAutoplay"),
     video: useCanUseAction<TSharkord>("toggleVideo"),
+    seek: useCanUseAction<TSharkord>("seekMusic"),
   };
   const [player, setPlayer] = useState(EMPTY_PLAYER_STATE);
   const [error, setError] = useState("");
@@ -93,7 +94,7 @@ const usePlayer = () => {
     let cancelled = false;
 
     callAction("getPlayerState")
-      .then((state) => {
+      .then((state: PlayerStateSnapshot) => {
         if (!cancelled) setPlayer(state);
       })
       .catch(() => {});
@@ -146,6 +147,8 @@ const usePlayer = () => {
       run(() => callAction("jumpToQueueItem", { position })),
     skip: () => run(() => callAction("nextMusic")),
     stop: () => run(() => callAction("stopMusic")),
+    seek: (positionSeconds: number) =>
+      run(() => callAction("seekMusic", { positionSeconds })),
     setVolume: (volume: number) => run(() => callAction("setVolume", { volume })),
     toggleAutoplay: () => run(() => callAction("toggleAutoplay")),
     toggleVideo: () => run(() => callAction("toggleVideo")),

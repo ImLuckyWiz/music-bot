@@ -58,3 +58,5 @@ export const useNotificationClick = (handler: any) =>
 
 export const useStoreSelector = <T>(selector: (state: any) => T): T =>
   useSyncExternalStore(getStore().subscribe, () => selector(getStore().getState()));
+
+export type TPluginStoreState = any;

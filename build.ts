@@ -1,3 +1,4 @@
+import { existsSync } from "fs";
 import fs from "fs/promises";
 import path from "path";
 
@@ -53,6 +54,13 @@ try {
           loader: "js",
         }));
       }
+
+      const localUiPath = path.resolve(pluginRootDir, "../sharkord/packages/ui/src/index.ts");
+      if (existsSync(localUiPath)) {
+        build.onResolve({ filter: /^@sharkord\/ui$/ }, () => ({
+          path: localUiPath,
+        }));
+      }
     },
   };
 
@@ -70,6 +78,10 @@ try {
   if (clientResult.success) {
     clientBundled = true;
     console.log("Client bundled successfully from src/client/index.ts");
+    const generatedClient = path.join(outDir, "client/index.js");
+    if (await Bun.file(generatedClient).exists()) {
+      await fs.copyFile(generatedClient, path.join(pluginRootDir, "client/index.js"));
+    }
   } else {
     console.warn("Client bundling failed:\n", clientResult.logs.join("\n"));
   }

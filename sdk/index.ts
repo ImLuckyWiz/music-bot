@@ -43,9 +43,9 @@ export type TPluginContract = any;
 export type TContractPush<C extends TPluginContract = TPluginContract> = any;
 export type TSharkordState = any;
 export type AppData = any;
-export type PlainTransport = any;
-export type Producer = any;
-export type Router = any;
+export type PlainTransport<T = any> = any;
+export type Producer<T = any> = any;
+export type Router<T = any> = any;
 export type TExternalStreamHandle = {
   streamId?: number;
   remove: () => void;

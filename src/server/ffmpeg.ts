@@ -45,6 +45,7 @@ type TMusicOptions = {
   volume?: number; // 0-100, default 100
   bitrate?: string;
   proxy?: string;
+  seekSeconds?: number;
   preResolvedTrack?: TYtDlpTrackInfo;
   log: (...messages: unknown[]) => void;
   error: (...messages: unknown[]) => void;
@@ -410,6 +411,9 @@ const spawnMusicStream = async (
   // -re paces each input to real time, so both inputs need their own
   const pacedInput = (url: string): string[] => [
     ...reconnectArgs(inputUserAgent, isLocalUrl(url)),
+    ...(options.seekSeconds && options.seekSeconds > 0
+      ? ["-ss", options.seekSeconds.toFixed(3)]
+      : []),
     "-re",
     "-readrate_initial_burst",
     String(INPUT_INITIAL_BURST_SECONDS),
@@ -497,6 +501,9 @@ const spawnMusicStream = async (
     ffmpegArgs = [
       ...commonArgs,
       ...inputArgs,
+      ...(options.seekSeconds && options.seekSeconds > 0
+        ? ["-ss", options.seekSeconds.toFixed(3)]
+        : []),
       "-re",
       "-readrate_initial_burst",
       String(INPUT_INITIAL_BURST_SECONDS),
@@ -524,7 +531,7 @@ const spawnMusicStream = async (
     throw err;
   }
 
-  if (ffmpegProcess.stderr) {
+  if (ffmpegProcess.stderr && typeof ffmpegProcess.stderr !== "number") {
     readLines(ffmpegProcess.stderr, (line) =>
       logFfmpegLine(line, options),
     ).catch((err: unknown) => options.error("[FFmpeg stderr error]", err));

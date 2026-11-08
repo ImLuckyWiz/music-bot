@@ -131,8 +131,10 @@ const cleanupChannel = (ctx: TCleanupContext, channelId: number): void => {
   state.streamHandle = null;
   state.audioProducer = null;
   state.audioTransport = null;
+  state.audioSsrc = null;
   state.videoProducer = null;
   state.videoTransport = null;
+  state.videoSsrc = null;
   state.videoProducerCloseHandler = null;
   state.activeVideoCodec = null;
   state.currentVideoLabel = null;
@@ -141,7 +143,10 @@ const cleanupChannel = (ctx: TCleanupContext, channelId: number): void => {
   state.producerCloseHandler = null;
   state.streamActive = false;
   state.streamStarting = false;
+  state.isSeeking = false;
   state.currentSong = null;
+  state.currentSourceUrl = null;
+  state.currentTrackInfo = null;
   state.currentInvokerUserId = null;
   state.currentThumbnailUrl = null;
   state.playbackStartedAtEpochMs = null;
@@ -427,6 +432,7 @@ const startMusicStream = async (
     router.on("@close", state.routerCloseHandler);
 
     const audioSsrc = Math.floor(Math.random() * 1e9);
+    state.audioSsrc = audioSsrc;
 
     state.audioTransport = await router.createPlainTransport({
       listenIp: {
@@ -462,6 +468,7 @@ const startMusicStream = async (
         ? trackInfo.videoCodec
         : null;
     const videoSsrc = Math.floor(Math.random() * 1e9);
+    state.videoSsrc = videoSsrc;
 
     if (videoCodec) {
       try {
@@ -561,6 +568,11 @@ const startMusicStream = async (
       error: ctx.logger.error,
       debug: ctx.logger.debug,
       onEnd: () => {
+        if (state.isSeeking) {
+          ctx.logger.debug("Music process ended due to seek in channel", channelId);
+          return;
+        }
+
         ctx.logger.log("Music ended in channel", channelId);
 
         const queueHasItems = state.queue.length > 0;
@@ -600,6 +612,8 @@ const startMusicStream = async (
     state.ffmpegProcess = result.process;
     state.volumeControlPort = result.controlPort ?? null;
     state.currentSong = result.title;
+    state.currentSourceUrl = sourceUrl;
+    state.currentTrackInfo = trackInfo ?? null;
     state.currentInvokerUserId = invokerUserId;
     state.currentThumbnailUrl = result.thumbnailUrl ?? null;
     state.playbackStartedAtEpochMs = Date.now();
@@ -667,7 +681,7 @@ const playNextInQueue = async (
         }
       }
 
-      if (autoplayTrack) {
+      if (autoplayTrack && autoplayTrack.webpageUrl) {
         ctx.logger.log("Autoplay starting next track:", autoplayTrack.title);
         const invokerUserId = state.currentInvokerUserId ?? 0;
         return startMusicStream(
@@ -705,6 +719,113 @@ const playNextInQueue = async (
     nextItem.invokerUserId,
     preResolved,
   );
+};
+
+const formatSeconds = (totalSeconds: number): string => {
+  const safe = Math.max(0, Math.floor(totalSeconds));
+  const minutes = Math.floor(safe / 60);
+  const seconds = safe % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+};
+
+const seekCurrentStream = async (
+  ctx: TMusicContext,
+  channelId: number,
+  targetSeconds: number,
+  options: PlaybackSettings,
+): Promise<void> => {
+  const state = getState(channelId);
+  if (!state.streamActive || !state.audioTransport) {
+    throw new Error("Nothing is currently playing in this channel.");
+  }
+  if (!state.currentSourceUrl) {
+    throw new Error("Current track source is unavailable for seeking.");
+  }
+
+  const duration = state.currentTrackDurationSeconds ?? 0;
+  const clampedSeconds =
+    duration > 0
+      ? Math.max(0, Math.min(targetSeconds, Math.max(0, duration - 1)))
+      : Math.max(0, targetSeconds);
+
+  ctx.logger.log(
+    `Seeking stream in channel ${channelId} to ${clampedSeconds}s (requested ${targetSeconds}s)`,
+  );
+
+  state.isSeeking = true;
+
+  // Terminate running FFmpeg process without closing producers or transports
+  if (state.ffmpegProcess) {
+    killMusicStream(state.ffmpegProcess);
+    state.ffmpegProcess = null;
+  }
+
+  const { ip } = ctx.voice.getListenInfo();
+  const sourceUrl = state.currentSourceUrl;
+  const trackInfo = state.currentTrackInfo ?? undefined;
+  const audioSsrc = state.audioSsrc ?? Math.floor(Math.random() * 1e9);
+  const videoSsrc = state.videoSsrc ?? Math.floor(Math.random() * 1e9);
+
+  try {
+    const result = await spawnMusicStream({
+      sourceUrl,
+      audioPayloadType: 111,
+      audioSsrc,
+      rtpHost: ip,
+      audioRtpPort: state.audioTransport.tuple.localPort,
+      ...(state.videoTransport && state.activeVideoCodec
+        ? {
+            videoPayloadType: getVideoPayloadType(state.activeVideoCodec),
+            videoSsrc,
+            videoRtpPort: state.videoTransport.tuple.localPort,
+          }
+        : {}),
+      volume: state.volume,
+      bitrate: options.bitrate,
+      proxy: options.proxy,
+      limitFps: options.limitFps,
+      videoMaxHeight: trackInfo?.resolvedMaxHeight,
+      preResolvedTrack: trackInfo,
+      seekSeconds: clampedSeconds,
+      log: ctx.logger.log,
+      error: ctx.logger.error,
+      debug: ctx.logger.debug,
+      onEnd: () => {
+        if (state.isSeeking) {
+          ctx.logger.debug("Music process ended due to seek in channel", channelId);
+          return;
+        }
+
+        ctx.logger.log("Music ended in channel", channelId);
+
+        const queueHasItems = state.queue.length > 0;
+        const shouldStartNext =
+          state.endAction === "next" ||
+          (state.endAction !== "stop" && (queueHasItems || state.autoplay));
+
+        state.endAction = "none";
+        cleanupChannel(ctx, channelId);
+
+        if (shouldStartNext) {
+          playNextInQueue(ctx, channelId, options).catch((err: unknown) =>
+            ctx.logger.error("Failed to start the next track", err),
+          );
+        }
+      },
+    });
+
+    state.ffmpegProcess = result.process;
+    state.volumeControlPort = result.controlPort ?? null;
+    state.playbackStartedAtEpochMs =
+      Date.now() - Math.round(clampedSeconds * 1000);
+    state.isSeeking = false;
+
+    publishPlayerState(ctx, channelId);
+  } catch (err) {
+    state.isSeeking = false;
+    cleanupChannel(ctx, channelId);
+    throw err;
+  }
 };
 
 const onLoad = async (ctx: TMusicContext) => {
@@ -974,6 +1095,43 @@ const onLoad = async (ctx: TMusicContext) => {
       return buildActionResult(
         ctx,
         `Volume set to ${volume}%.`,
+        channelId,
+      );
+    },
+  });
+
+  ctx.actions.register({
+    name: "seekMusic",
+    description: "Seeks to a specific position in the current track",
+    requires: Permission.JOIN_VOICE_CHANNELS,
+    executes: async (invoker, payload) => {
+      const channelId = requireVoiceChannelId(
+        invoker.currentVoiceChannelId,
+        "You must be in a voice channel to seek.",
+      );
+
+      if (!Number.isFinite(payload.positionSeconds)) {
+        throw new Error("Invalid seek position.");
+      }
+
+      const state = getState(channelId);
+      if (!state.streamActive) {
+        throw new Error("Nothing is currently playing.");
+      }
+      if (state.currentTrackDurationSeconds === null) {
+        throw new Error("Cannot seek a stream with unknown duration.");
+      }
+
+      await seekCurrentStream(
+        ctx,
+        channelId,
+        payload.positionSeconds,
+        getPlaybackSettings(channelId),
+      );
+
+      return buildActionResult(
+        ctx,
+        `Seeked to ${formatSeconds(payload.positionSeconds)}.`,
         channelId,
       );
     },

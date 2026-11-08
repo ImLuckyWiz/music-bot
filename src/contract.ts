@@ -57,6 +57,10 @@ type TSharkord = {
       payload: { volume: number };
       response: PlayerActionResponse;
     };
+    seekMusic: {
+      payload: { positionSeconds: number };
+      response: PlayerActionResponse;
+    };
     toggleAutoplay: {
       payload: void;
       response: PlayerActionResponse;

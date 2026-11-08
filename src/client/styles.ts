@@ -95,13 +95,44 @@ const CSS = `
 .mb-title-loading { display: inline-flex; align-items: center; gap: 8px; color: #e6e6e6; }
 .mb-sub { margin-top: 3px; font-size: 12px; color: #b3b3b3; }
 
-.mb-progress { padding: 0 16px; }
-.mb-bar { height: 4px; border-radius: 999px; background: #4d4d4d; overflow: hidden; }
+.mb-progress { padding: 0 16px; user-select: none; }
+.mb-bar-track {
+  position: relative; padding: 6px 0; cursor: default; outline: none;
+}
+.mb-bar-track.mb-interactive { cursor: pointer; }
+.mb-bar {
+  position: relative; height: 4px; border-radius: 999px; background: #4d4d4d;
+  transition: height 0.15s ease;
+}
+.mb-bar-track.mb-interactive:hover .mb-bar,
+.mb-bar-track.mb-dragging .mb-bar {
+  height: 6px;
+}
 .mb-bar-fill {
-  height: 100%; width: 0; border-radius: 999px; background: #fff;
+  position: relative; height: 100%; width: 0; border-radius: 999px; background: #fff;
   transition: width 1s linear, background 0.15s ease;
 }
+.mb-bar-track.mb-dragging .mb-bar-fill {
+  transition: none;
+}
 .mb-panel:hover .mb-bar-fill { background: ${ACCENT}; }
+.mb-bar-thumb {
+  position: absolute; right: -5px; top: 50%; transform: translateY(-50%) scale(0);
+  width: 12px; height: 12px; border-radius: 50%; background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  transition: transform 0.15s ease; pointer-events: none;
+}
+.mb-bar-track.mb-interactive:hover .mb-bar-thumb,
+.mb-bar-track.mb-dragging .mb-bar-thumb {
+  transform: translateY(-50%) scale(1);
+}
+.mb-bar-tooltip {
+  position: absolute; top: -22px; transform: translateX(-50%);
+  padding: 2px 6px; border-radius: 4px; background: rgba(0, 0, 0, 0.85);
+  color: #fff; font-size: 10px; font-weight: 600; pointer-events: none;
+  white-space: nowrap; font-variant-numeric: tabular-nums;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3); z-index: 10;
+}
 .mb-times {
   display: flex; justify-content: space-between; margin-top: 6px;
   font-size: 11px; color: #a7a7a7; font-variant-numeric: tabular-nums;

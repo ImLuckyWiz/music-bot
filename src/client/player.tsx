@@ -34,6 +34,7 @@ const PlayerPanel = ({ controller }: PlayerPanelProps) => {
     player,
     progressPercent,
     remove,
+    seek,
     setVolume,
     skip,
     stop,
@@ -152,6 +153,72 @@ const PlayerPanel = ({ controller }: PlayerPanelProps) => {
     : isLoading
       ? (pendingQuery || "Starting playback...")
       : "Nothing playing";
+
+  const canSeek =
+    isPlaying &&
+    !isBusy &&
+    Boolean(can.seek) &&
+    player.currentTrackDurationSeconds !== null &&
+    player.currentTrackDurationSeconds > 0;
+
+  const [isDragging, setIsDragging] = useState(false);
+  const [draftPercent, setDraftPercent] = useState<number | null>(null);
+  const [hoverPercent, setHoverPercent] = useState<number | null>(null);
+  const barTrackRef = useRef<HTMLDivElement>(null);
+
+  const getPercentFromPointer = (e: React.PointerEvent) => {
+    if (!barTrackRef.current) return 0;
+    const rect = barTrackRef.current.getBoundingClientRect();
+    const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+    return (x / rect.width) * 100;
+  };
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    if (!canSeek || !player.currentTrackDurationSeconds) return;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    setIsDragging(true);
+    setDraftPercent(getPercentFromPointer(e));
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (isDragging) {
+      setDraftPercent(getPercentFromPointer(e));
+    } else if (canSeek) {
+      setHoverPercent(getPercentFromPointer(e));
+    }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+    if (!isDragging) return;
+    setIsDragging(false);
+    const finalPercent = getPercentFromPointer(e);
+    setDraftPercent(null);
+    if (player.currentTrackDurationSeconds) {
+      const targetSec = (finalPercent / 100) * player.currentTrackDurationSeconds;
+      seek(targetSec);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!canSeek || !player.currentTrackDurationSeconds) return;
+    const duration = player.currentTrackDurationSeconds;
+    const current = elapsedSeconds ?? 0;
+    if (e.key === "ArrowLeft" || e.key === "ArrowDown") {
+      e.preventDefault();
+      seek(Math.max(0, current - 5));
+    } else if (e.key === "ArrowRight" || e.key === "ArrowUp") {
+      e.preventDefault();
+      seek(Math.min(duration, current + 5));
+    }
+  };
+
+  const displayedPercent =
+    isDragging && draftPercent !== null ? draftPercent : progressPercent;
+
+  const displayedElapsedSeconds =
+    isDragging && draftPercent !== null && player.currentTrackDurationSeconds
+      ? Math.round((draftPercent / 100) * player.currentTrackDurationSeconds)
+      : elapsedSeconds;
 
   return (
     <div className="mb-panel">
@@ -312,14 +379,42 @@ const PlayerPanel = ({ controller }: PlayerPanelProps) => {
       </div>
 
       <div className="mb-progress">
-        <div className="mb-bar">
-          <div
-            className="mb-bar-fill"
-            style={{ width: `${progressPercent}%` }}
-          />
+        <div
+          ref={barTrackRef}
+          className={`mb-bar-track ${canSeek ? "mb-interactive" : ""} ${isDragging ? "mb-dragging" : ""}`}
+          role="slider"
+          tabIndex={canSeek ? 0 : -1}
+          aria-valuenow={displayedElapsedSeconds ?? 0}
+          aria-valuemin={0}
+          aria-valuemax={player.currentTrackDurationSeconds ?? 0}
+          aria-label="Playback timeline"
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerLeave={() => setHoverPercent(null)}
+          onKeyDown={handleKeyDown}
+        >
+          <div className="mb-bar">
+            <div
+              className="mb-bar-fill"
+              style={{ width: `${displayedPercent}%` }}
+            >
+              {canSeek ? <span className="mb-bar-thumb" /> : null}
+            </div>
+            {hoverPercent !== null && canSeek && player.currentTrackDurationSeconds ? (
+              <div
+                className="mb-bar-tooltip"
+                style={{ left: `${hoverPercent}%` }}
+              >
+                {formatDuration(
+                  (hoverPercent / 100) * player.currentTrackDurationSeconds,
+                )}
+              </div>
+            ) : null}
+          </div>
         </div>
         <div className="mb-times">
-          <span>{formatDuration(elapsedSeconds)}</span>
+          <span>{formatDuration(displayedElapsedSeconds)}</span>
           <span>{formatDuration(player.currentTrackDurationSeconds)}</span>
         </div>
       </div>

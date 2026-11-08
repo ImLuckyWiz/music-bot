@@ -20,8 +20,10 @@ type ChannelStreamState = {
   ffmpegProcess: TMusicStreamResult["process"] | null;
   audioProducer: Producer | null;
   audioTransport: PlainTransport<AppData> | null;
+  audioSsrc: number | null;
   videoTransport: PlainTransport<AppData> | null;
   videoProducer: Producer | null;
+  videoSsrc: number | null;
   videoProducerCloseHandler: ((...args: unknown[]) => void) | null;
   activeVideoCodec: "h264" | "vp9" | null;
   currentVideoLabel: string | null;
@@ -30,10 +32,13 @@ type ChannelStreamState = {
   routerCloseHandler: ((...args: unknown[]) => void) | null;
   producerCloseHandler: ((...args: unknown[]) => void) | null;
   currentSong: string | null;
+  currentSourceUrl: string | null;
+  currentTrackInfo: TYtDlpTrackInfo | null;
   currentInvokerUserId: number | null;
   currentThumbnailUrl: string | null;
   streamActive: boolean;
   streamStarting: boolean;
+  isSeeking: boolean;
   playbackStartedAtEpochMs: number | null;
   currentTrackDurationSeconds: number | null;
   volume: number;
@@ -56,8 +61,10 @@ const createInitialState = (): ChannelStreamState => ({
   ffmpegProcess: null,
   audioProducer: null,
   audioTransport: null,
+  audioSsrc: null,
   videoTransport: null,
   videoProducer: null,
+  videoSsrc: null,
   videoProducerCloseHandler: null,
   activeVideoCodec: null,
   currentVideoLabel: null,
@@ -66,10 +73,13 @@ const createInitialState = (): ChannelStreamState => ({
   routerCloseHandler: null,
   producerCloseHandler: null,
   currentSong: null,
+  currentSourceUrl: null,
+  currentTrackInfo: null,
   currentInvokerUserId: null,
   currentThumbnailUrl: null,
   streamActive: false,
   streamStarting: false,
+  isSeeking: false,
   playbackStartedAtEpochMs: null,
   currentTrackDurationSeconds: null,
   volume: DEFAULT_VOLUME,
@@ -162,7 +172,6 @@ const emptyPlayerStateSnapshot = (): PlayerStateSnapshot => ({
   playbackStartedAtEpochMs: null,
   currentTrackDurationSeconds: null,
   volume: DEFAULT_VOLUME,
-  volumeControlPort: null,
   queue: [],
   autoplay: false,
   videoEnabled: false,

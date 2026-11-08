@@ -63,7 +63,7 @@ export const sendFfmpegVolumeCommand = (
     let state: "greeting" | "ready" = "greeting";
     let recvBuf = Buffer.alloc(0);
 
-    sock.on("data", (chunk) => {
+    sock.on("data", (chunk: Buffer) => {
       recvBuf = Buffer.concat([recvBuf, chunk]);
 
       if (state === "greeting" && recvBuf.length >= 64) {
