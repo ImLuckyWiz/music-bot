@@ -92,7 +92,9 @@ const cleanupChannel = (ctx: TCleanupContext, channelId: number): void => {
 
   if (!state) return;
 
-  killMusicStream(state.ffmpegProcess);
+  state.streamGeneration++;
+
+  void killMusicStream(state.ffmpegProcess);
 
   state.ffmpegProcess = null;
 
@@ -545,6 +547,8 @@ const startMusicStream = async (
       }
     }
 
+    const generation = ++state.streamGeneration;
+
     const result = await spawnMusicStream({
       sourceUrl,
       audioPayloadType: 111,
@@ -568,8 +572,10 @@ const startMusicStream = async (
       error: ctx.logger.error,
       debug: ctx.logger.debug,
       onEnd: () => {
-        if (state.isSeeking) {
-          ctx.logger.debug("Music process ended due to seek in channel", channelId);
+        if (state.streamGeneration !== generation) {
+          ctx.logger.debug(
+            `Ignoring onEnd from superseded stream generation ${generation} (current: ${state.streamGeneration}) in channel ${channelId}`,
+          );
           return;
         }
 
@@ -590,6 +596,11 @@ const startMusicStream = async (
         }
       },
     });
+
+    if (state.streamGeneration !== generation) {
+      void killMusicStream(result.process);
+      return result.title;
+    }
 
     // tracked right away, so a failure below still tears ffmpeg and its proxy down
     state.ffmpegProcess = result.process;
@@ -752,12 +763,14 @@ const seekCurrentStream = async (
     `Seeking stream in channel ${channelId} to ${clampedSeconds}s (requested ${targetSeconds}s)`,
   );
 
+  const generation = ++state.streamGeneration;
   state.isSeeking = true;
 
   // Terminate running FFmpeg process without closing producers or transports
   if (state.ffmpegProcess) {
-    killMusicStream(state.ffmpegProcess);
+    const oldProcess = state.ffmpegProcess;
     state.ffmpegProcess = null;
+    await killMusicStream(oldProcess);
   }
 
   const { ip } = ctx.voice.getListenInfo();
@@ -791,8 +804,10 @@ const seekCurrentStream = async (
       error: ctx.logger.error,
       debug: ctx.logger.debug,
       onEnd: () => {
-        if (state.isSeeking) {
-          ctx.logger.debug("Music process ended due to seek in channel", channelId);
+        if (state.streamGeneration !== generation) {
+          ctx.logger.debug(
+            `Ignoring onEnd from superseded stream generation ${generation} (current: ${state.streamGeneration}) in channel ${channelId}`,
+          );
           return;
         }
 
@@ -814,6 +829,11 @@ const seekCurrentStream = async (
       },
     });
 
+    if (state.streamGeneration !== generation) {
+      void killMusicStream(result.process);
+      return;
+    }
+
     state.ffmpegProcess = result.process;
     state.volumeControlPort = result.controlPort ?? null;
     state.playbackStartedAtEpochMs =
@@ -822,8 +842,10 @@ const seekCurrentStream = async (
 
     publishPlayerState(ctx, channelId);
   } catch (err) {
-    state.isSeeking = false;
-    cleanupChannel(ctx, channelId);
+    if (state.streamGeneration === generation) {
+      state.isSeeking = false;
+      cleanupChannel(ctx, channelId);
+    }
     throw err;
   }
 };

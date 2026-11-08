@@ -39,6 +39,7 @@ type ChannelStreamState = {
   streamActive: boolean;
   streamStarting: boolean;
   isSeeking: boolean;
+  streamGeneration: number;
   playbackStartedAtEpochMs: number | null;
   currentTrackDurationSeconds: number | null;
   volume: number;
@@ -80,6 +81,7 @@ const createInitialState = (): ChannelStreamState => ({
   streamActive: false,
   streamStarting: false,
   isSeeking: false,
+  streamGeneration: 0,
   playbackStartedAtEpochMs: null,
   currentTrackDurationSeconds: null,
   volume: DEFAULT_VOLUME,

@@ -575,16 +575,21 @@ const spawnMusicStream = async (
   };
 };
 
-const killMusicStream = (process: TSpawnedStreamProcess | null): void => {
+const killMusicStream = async (process: TSpawnedStreamProcess | null): Promise<void> => {
   if (!process) return;
 
-  terminateProcess(process.ffmpeg);
-
   for (const session of process.inputSessions) session.close();
+
+  terminateProcess(process.ffmpeg);
 
   if (process.ytDlp) {
     terminateProcess(process.ytDlp);
   }
+
+  await Promise.race([
+    process.ffmpeg.exited,
+    new Promise((resolve) => setTimeout(resolve, 300)),
+  ]);
 };
 
 export { spawnMusicStream, killMusicStream };
