@@ -45,7 +45,10 @@ import {
   type TYtDlpOptions,
   type TYtDlpTrackInfo,
 } from "./yt-dlp";
-import { resolvePlayableSource } from "./search";
+import {
+  fetchYouTubeMusicRelatedTracks,
+  resolvePlayableSource,
+} from "./search";
 
 type TMusicContext = PluginContext<TSharkord>;
 
@@ -253,6 +256,31 @@ const buildActionResult = (
   return { message, player: getPlayerStateSnapshot(channelId) };
 };
 
+const fetchAutoplayRelatedTracks = async (
+  seedVideoId: string,
+  videoEnabled: boolean,
+  options: TYtDlpOptions,
+  seedTitle?: string,
+): Promise<Array<{ id: string; title: string; url: string }>> => {
+  if (!videoEnabled) {
+    const musicTracks = await fetchYouTubeMusicRelatedTracks(seedVideoId, {
+      proxy: options.proxy,
+      log: options.log,
+      error: options.error,
+    });
+
+    if (musicTracks.length > 0) {
+      return musicTracks;
+    }
+
+    options.log?.(
+      "[autoplay] YouTube Music radio yielded no tracks; falling back to YouTube mix",
+    );
+  }
+
+  return fetchYouTubeRelatedTracks(seedVideoId, options, seedTitle);
+};
+
 const triggerPrefetchNext = (
   ctx: TMusicContext,
   channelId: number,
@@ -276,8 +304,9 @@ const triggerPrefetchNext = (
 
       const promise = (async () => {
         try {
-          const related = await fetchYouTubeRelatedTracks(
+          const related = await fetchAutoplayRelatedTracks(
             state.lastPlayedVideoId!,
+            state.videoEnabled,
             {
               log: ctx.logger.log,
               error: ctx.logger.error,
@@ -612,8 +641,9 @@ const playNextInQueue = async (
 
       if (!autoplayTrack) {
         try {
-          const related = await fetchYouTubeRelatedTracks(
+          const related = await fetchAutoplayRelatedTracks(
             state.lastPlayedVideoId,
+            state.videoEnabled,
             {
               log: ctx.logger.log,
               error: ctx.logger.error,

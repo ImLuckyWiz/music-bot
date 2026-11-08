@@ -1,6 +1,6 @@
 {
   "name": "music-bot",
-  "version": "0.0.20",
+  "version": "0.0.21",
   "author": "ImLuckyWiz",
   "module": "src/server/index.ts",
   "type": "module",

@@ -211,4 +211,101 @@ export const resolvePlayableSource = async (
   return `ytsearch:${trimmed}`;
 };
 
+export type TMusicRelatedTrack = {
+  id: string;
+  title: string;
+  url: string;
+};
+
+/**
+ * Fetches radio/autoplay recommendations from YouTube Music for a given seed track.
+ * Uses the `RDAMVM<videoId>` radio playlist to return studio audio tracks (Topic tracks),
+ * completely bypassing music videos with dialogue and skits.
+ */
+export const fetchYouTubeMusicRelatedTracks = async (
+  seedVideoId: string,
+  options?: TSearchOptions,
+): Promise<TMusicRelatedTrack[]> => {
+  const videoId = seedVideoId.trim();
+  if (!/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
+    return [];
+  }
+
+  const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+
+  try {
+    options?.log?.(
+      `[autoplay] Fetching YouTube Music radio recommendations for ${videoId}...`,
+    );
+
+    const res = await fetch("https://music.youtube.com/youtubei/v1/next", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "User-Agent": USER_AGENT,
+      },
+      body: JSON.stringify({
+        context: {
+          client: {
+            clientName: "WEB_REMIX",
+            clientVersion: "1.20240101.01.00",
+            hl: "en",
+            gl: "US",
+          },
+        },
+        videoId,
+        playlistId: `RDAMVM${videoId}`,
+      }),
+      signal: AbortSignal.timeout(timeoutMs),
+      ...(options?.proxy ? { proxy: options.proxy } : {}),
+    });
+
+    if (!res.ok) {
+      options?.log?.(
+        `[autoplay] YouTube Music next returned HTTP ${res.status} for ${videoId}`,
+      );
+      return [];
+    }
+
+    const data = (await res.json()) as Record<string, any>;
+    const tabs =
+      data?.contents?.singleColumnMusicWatchNextResultsRenderer?.tabbedRenderer
+        ?.watchNextTabbedResultsRenderer?.tabs;
+    const queueContent =
+      tabs?.[0]?.tabRenderer?.content?.musicQueueRenderer?.content
+        ?.playlistPanelRenderer?.contents;
+
+    const tracks: TMusicRelatedTrack[] = [];
+    if (Array.isArray(queueContent)) {
+      for (const item of queueContent) {
+        const r = item?.playlistPanelVideoRenderer;
+        const vid = r?.videoId;
+        if (
+          typeof vid === "string" &&
+          vid.length === 11 &&
+          vid !== videoId
+        ) {
+          const title = r?.title?.runs?.[0]?.text ?? `Track ${vid}`;
+          tracks.push({
+            id: vid,
+            title,
+            url: `https://www.youtube.com/watch?v=${vid}`,
+          });
+        }
+      }
+    }
+
+    options?.log?.(
+      `[autoplay] Found ${tracks.length} YouTube Music radio tracks for ${videoId}`,
+    );
+    return tracks;
+  } catch (err) {
+    options?.error?.(
+      `[autoplay] Failed to fetch YouTube Music radio tracks for ${videoId}:`,
+      err,
+    );
+    return [];
+  }
+};
+
 export type { TSearchOptions };

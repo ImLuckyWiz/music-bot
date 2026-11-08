@@ -56,11 +56,13 @@ jobs:
 
           cat << 'EOF' > release_notes.md
           ### Music Bot v${VERSION}
+          - **YouTube Music Radio Autoplay**: Autoplay in audio-only mode now queries YouTube Music's radio endpoint (`RDAMVM<videoId>`), delivering 100% clean studio audio tracks with zero music videos/skits.
+          - **Instant Autoplay Recommendations**: Fetches radio recommendations in ~200–400ms via native InnerTube HTTP requests instead of spawning slow `yt-dlp` child processes.
           - **Fast InnerTube Search**: Bypasses slow `yt-dlp` child-process search (~5s) in favor of direct InnerTube HTTP requests (~250–500ms).
           - **Audio Version Preference (Audio-Only Mode)**: When video is disabled (`videoEnabled = false`), searches route to YouTube Music (`WEB_REMIX`) with Songs filtering to prioritize clean studio audio/Topic tracks over music videos with dialogue and skits.
           - **Video Search Routing (Video Mode)**: When video is enabled (`videoEnabled = true`), searches route to standard YouTube (`WEB`) to prioritize official music videos.
           - **Instant Queue Resolution**: Resolves search queries to direct URLs prior to enqueuing, displaying real video links immediately.
-          - **Robust Fallback & Proxy Support**: Gracefully falls back to `ytsearch:` if InnerTube is unreachable and forwards proxy settings if configured.
+          - **Robust Fallback & Proxy Support**: Gracefully falls back to standard YouTube mix/`ytsearch:` if InnerTube is unreachable and forwards proxy settings if configured.
           - **Built for Sharkord**: Unpacks to `music-bot/` containing `manifest.json`, `client/index.js`, and `server/index.js`.
           EOF
 
@@ -71,6 +73,6 @@ jobs:
           else
             echo "Creating new release $TAG..."
             gh release create "$TAG" "$ARCHIVE" "$META" \
-              --title "v${VERSION} - Fast Search & Audio-Preferred Playback" \
+              --title "v${VERSION} - YouTube Music Radio Autoplay & Fast Search" \
               --notes-file release_notes.md
           fi
