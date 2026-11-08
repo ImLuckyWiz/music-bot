@@ -288,6 +288,65 @@ const fetchAutoplayRelatedTracks = async (
   return fetchYouTubeRelatedTracks(seedVideoId, options, seedTitle);
 };
 
+const resolveNextAutoplayTrack = async (
+  ctx: TMusicContext,
+  channelId: number,
+  options: PlaybackSettings,
+): Promise<TYtDlpTrackInfo | null> => {
+  const state = getState(channelId);
+  if (!state.lastPlayedVideoId) return null;
+
+  try {
+    const related = await fetchAutoplayRelatedTracks(
+      state.lastPlayedVideoId,
+      state.videoEnabled,
+      {
+        log: ctx.logger.log,
+        error: ctx.logger.error,
+        debug: ctx.logger.debug,
+        proxy: options.proxy,
+      },
+      state.currentSong ?? undefined,
+    );
+
+    const unplayed = related.filter(
+      (r) => !state.recentVideoIds.includes(r.id),
+    );
+    const pool = unplayed.length > 0 ? unplayed : related;
+
+    // Try up to 5 candidates in order, skipping any that fail resolution (e.g. age-restricted)
+    for (const candidate of pool.slice(0, 5)) {
+      try {
+        const trackInfo = await resolveYouTubeTrack(
+          candidate.url,
+          buildYtDlpOptions(ctx, options),
+        );
+        return trackInfo;
+      } catch (err) {
+        ctx.logger.error(
+          `[autoplay] Track ${candidate.id} (${candidate.title}) failed to resolve; trying next recommendation...`,
+          err,
+        );
+        // Exclude failed/restricted track from further selection in this session
+        if (!state.recentVideoIds.includes(candidate.id)) {
+          state.recentVideoIds.push(candidate.id);
+          if (state.recentVideoIds.length > 50) {
+            state.recentVideoIds.shift();
+          }
+        }
+      }
+    }
+
+    return null;
+  } catch (err) {
+    ctx.logger.error(
+      "[autoplay] Failed to fetch related recommendations:",
+      err,
+    );
+    return null;
+  }
+};
+
 const triggerPrefetchNext = (
   ctx: TMusicContext,
   channelId: number,
@@ -311,31 +370,15 @@ const triggerPrefetchNext = (
 
       const promise = (async () => {
         try {
-          const related = await fetchAutoplayRelatedTracks(
-            state.lastPlayedVideoId!,
-            state.videoEnabled,
-            {
-              log: ctx.logger.log,
-              error: ctx.logger.error,
-              debug: ctx.logger.debug,
-              proxy: options.proxy,
-            },
-            state.currentSong ?? undefined,
+          const trackInfo = await resolveNextAutoplayTrack(
+            ctx,
+            channelId,
+            options,
           );
-
-          const candidate =
-            related.find((r) => !state.recentVideoIds.includes(r.id)) ??
-            related[0];
-
-          if (!candidate) return null;
-
-          const trackInfo = await resolveYouTubeTrack(
-            candidate.url,
-            buildYtDlpOptions(ctx, options),
-          );
-
-          state.prefetchedAutoplayTrack = trackInfo;
-          ctx.logger.log("Prefetched autoplay track:", trackInfo.title);
+          if (trackInfo) {
+            state.prefetchedAutoplayTrack = trackInfo;
+            ctx.logger.log("Prefetched autoplay track:", trackInfo.title);
+          }
           return trackInfo;
         } catch (err) {
           ctx.logger.error("Failed to prefetch autoplay track", err);
@@ -665,31 +708,7 @@ const playNextInQueue = async (
       }
 
       if (!autoplayTrack) {
-        try {
-          const related = await fetchAutoplayRelatedTracks(
-            state.lastPlayedVideoId,
-            state.videoEnabled,
-            {
-              log: ctx.logger.log,
-              error: ctx.logger.error,
-              debug: ctx.logger.debug,
-              proxy: options.proxy,
-            },
-            state.currentSong ?? undefined,
-          );
-          const candidate =
-            related.find((r) => !state.recentVideoIds.includes(r.id)) ??
-            related[0];
-
-          if (candidate) {
-            autoplayTrack = await resolveYouTubeTrack(
-              candidate.url,
-              buildYtDlpOptions(ctx, options),
-            );
-          }
-        } catch (err) {
-          ctx.logger.error("Failed to fetch autoplay track on queue end", err);
-        }
+        autoplayTrack = await resolveNextAutoplayTrack(ctx, channelId, options);
       }
 
       if (autoplayTrack && autoplayTrack.webpageUrl) {
