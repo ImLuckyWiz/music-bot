@@ -45,6 +45,7 @@ import {
   type TYtDlpOptions,
   type TYtDlpTrackInfo,
 } from "./yt-dlp";
+import { resolvePlayableSource } from "./search";
 
 type TMusicContext = PluginContext<TSharkord>;
 
@@ -188,20 +189,6 @@ const requireVoiceChannelId = (
   }
 
   return channelId;
-};
-
-const normalizePlayableSource = (query: string): string => {
-  const trimmedQuery = query.trim();
-
-  if (!trimmedQuery) {
-    throw new Error("You must provide a search query or URL.");
-  }
-
-  if (!/^https?:\/\//.test(trimmedQuery)) {
-    return `ytsearch:${trimmedQuery}`;
-  }
-
-  return trimmedQuery;
 };
 
 const suggestionCache = new Map<string, { timestamp: number; data: string[] }>();
@@ -778,15 +765,24 @@ const onLoad = async (ctx: TMusicContext) => {
         invoker.currentVoiceChannelId,
         "You must be in a voice channel to play music.",
       );
-      const sourceUrl = normalizePlayableSource(payload.query);
       const state = getState(channelId);
+      const playbackSettings = getPlaybackSettings(channelId);
+      const sourceUrl = await resolvePlayableSource(
+        payload.query,
+        state.videoEnabled,
+        {
+          proxy: playbackSettings.proxy,
+          log: (msg) => ctx.logger.log(msg),
+          error: (msg, err) => ctx.logger.error(msg, err),
+        },
+      );
 
       if (state.streamActive || state.streamStarting) {
         const position = enqueueSource(channelId, sourceUrl, invoker.userId);
 
         publishPlayerState(ctx, channelId);
 
-        triggerPrefetchNext(ctx, channelId, getPlaybackSettings(channelId));
+        triggerPrefetchNext(ctx, channelId, playbackSettings);
 
         return buildActionResult(
           ctx,
@@ -799,7 +795,7 @@ const onLoad = async (ctx: TMusicContext) => {
         ctx,
         channelId,
         sourceUrl,
-        getPlaybackSettings(channelId),
+        playbackSettings,
         invoker.userId,
       );
 
