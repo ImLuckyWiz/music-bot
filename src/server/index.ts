@@ -816,6 +816,9 @@ const seekCurrentStream = async (
     await killMusicStream(oldProcess);
   }
 
+  const sourceUrl = state.currentSourceUrl;
+  const trackInfo = state.currentTrackInfo ?? undefined;
+
   // Detach close observers from old producers so closing them won't clean up the channel
   const oldAudioProducer = state.audioProducer;
   const oldAudioTransport = state.audioTransport;
@@ -909,16 +912,15 @@ const seekCurrentStream = async (
     return;
   }
 
-  // Update external stream in Sharkord voice runtime;
-  // this emits VOICE_NEW_PRODUCER so clients automatically subscribe without recreating the stream tile
-  state.streamHandle?.update?.({
-    producers: {
-      audio: newAudioProducer,
-      video: newVideoProducer ?? undefined,
-    },
-  });
+  // Safely remove the old external stream and close old transports/producers.
+  // We recreate the stream with ctx.voice.createStream instead of calling streamHandle.update
+  // to avoid Sharkord's server-side updateExternalStream bug where closing the old producer
+  // triggers removeExternalStream when hasProducers is momentarily false.
+  try {
+    state.streamHandle?.remove();
+  } catch {}
+  state.streamHandle = null;
 
-  // Close old producers and transports
   try {
     oldAudioProducer?.close();
   } catch {}
@@ -931,6 +933,19 @@ const seekCurrentStream = async (
   try {
     oldVideoTransport?.close();
   } catch {}
+
+  // Create clean external stream with the new producer(s)
+  state.streamHandle = ctx.voice.createStream({
+    key: "music",
+    channelId,
+    title: trackInfo?.title ?? state.currentSong ?? sourceUrl,
+    avatarUrl: "https://i.imgur.com/uVBNUK9.png",
+    bannerUrl: state.currentThumbnailUrl ?? trackInfo?.thumbnailUrl,
+    producers: {
+      audio: newAudioProducer,
+      video: newVideoProducer ?? undefined,
+    },
+  });
 
   // Update state with new transports and producers
   state.audioTransport = newAudioTransport;
@@ -955,9 +970,6 @@ const seekCurrentStream = async (
       return;
     }
   }
-
-  const sourceUrl = state.currentSourceUrl;
-  const trackInfo = state.currentTrackInfo ?? undefined;
 
   try {
     const result = await spawnMusicStream({
