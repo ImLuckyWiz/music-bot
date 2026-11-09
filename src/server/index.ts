@@ -363,9 +363,12 @@ const triggerPrefetchNext = (
       !state.prefetchedAutoplayTrack &&
       !state.autoplayPrefetchPromise
     ) {
+      const seedVideoId = state.lastPlayedVideoId;
+      const generation = state.streamGeneration;
+
       ctx.logger.debug(
         "Autoplay active with empty queue; prefetching related track for:",
-        state.lastPlayedVideoId,
+        seedVideoId,
       );
 
       const promise = (async () => {
@@ -375,6 +378,17 @@ const triggerPrefetchNext = (
             channelId,
             options,
           );
+
+          if (
+            state.streamGeneration !== generation ||
+            state.lastPlayedVideoId !== seedVideoId
+          ) {
+            ctx.logger.debug(
+              `[autoplay] Discarding stale prefetch for ${seedVideoId} (now: ${state.lastPlayedVideoId})`,
+            );
+            return null;
+          }
+
           if (trackInfo) {
             state.prefetchedAutoplayTrack = trackInfo;
             ctx.logger.log("Prefetched autoplay track:", trackInfo.title);
@@ -384,7 +398,9 @@ const triggerPrefetchNext = (
           ctx.logger.error("Failed to prefetch autoplay track", err);
           return null;
         } finally {
-          state.autoplayPrefetchPromise = null;
+          if (state.lastPlayedVideoId === seedVideoId) {
+            state.autoplayPrefetchPromise = null;
+          }
         }
       })();
 
@@ -677,6 +693,8 @@ const startMusicStream = async (
     state.streamActive = true;
     state.streamStarting = false;
     state.endAction = "none";
+    state.prefetchedAutoplayTrack = null;
+    state.autoplayPrefetchPromise = null;
 
     publishPlayerState(ctx, channelId);
     triggerPrefetchNext(ctx, channelId, options);
@@ -976,6 +994,8 @@ const onLoad = async (ctx: TMusicContext) => {
       );
 
       if (state.streamActive || state.streamStarting) {
+        state.prefetchedAutoplayTrack = null;
+        state.autoplayPrefetchPromise = null;
         const position = enqueueSource(channelId, sourceUrl, invoker.userId);
 
         publishPlayerState(ctx, channelId);

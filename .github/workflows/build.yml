@@ -56,7 +56,8 @@ jobs:
 
           cat << 'EOF' > release_notes.md
           ### Music Bot v${VERSION}
-          - **Fix Track Skipping & Queue Jumping with Autoplay**: Skipping a track (`nextMusic`) or jumping to a queued track (`jumpToQueueItem`) now cleanly stops the current stream and immediately starts the next track / autoplay recommendation, fixing an issue where skipped tracks aborted playback due to stream generation mismatches.
+          - **Dynamic Autoplay Adaptation for Manual Queuing & Skips**: When you add a new song to the queue or skip to it, any stale prefetch from the previous song is immediately discarded. Autoplay now automatically pivots its radio station recommendations to base upcoming tracks on the new manually added song.
+          - **Fix Track Skipping & Queue Jumping with Autoplay**: Skipping a track (`nextMusic`) or jumping to a queued track (`jumpToQueueItem`) now cleanly stops the current stream and immediately starts the next track / autoplay recommendation.
           - **Resilient Autoplay Candidate Retries**: When an autoplay recommendation cannot be resolved (e.g. YouTube age-restriction, sign-in requirement, or region block), autoplay automatically skips it and attempts the next candidates in the radio list (up to 5 retries) instead of aborting.
           - **Failed Candidate Blacklisting**: Unplayable or restricted tracks are tracked in the channel's recent history to avoid repeatedly selecting them during the same session.
           - **Interactive Seeking & Scrubber**: Full timeline seek bar with live scrubbing support.
@@ -72,6 +73,6 @@ jobs:
           else
             echo "Creating new release $TAG..."
             gh release create "$TAG" "$ARCHIVE" "$META" \
-              --title "v${VERSION} - Fix Skipping with Autoplay & Stream Stability" \
+              --title "v${VERSION} - Dynamic Autoplay Queue Adaptation" \
               --notes-file release_notes.md
           fi
