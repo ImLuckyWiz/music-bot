@@ -56,6 +56,7 @@ jobs:
 
           cat << 'EOF' > release_notes.md
           ### Music Bot v${VERSION}
+          - **Wider Player Panel Layout**: Expanded panel width to 440px so the 4 transport controls, toggle switches, and master volume slider fit comfortably with ample breathing room and no clipping.
           - **Previous Track Navigation**: Added dedicated Previous button with standard media player behavior. Pressing it after 3.0s restarts the track from 0s; pressing within 3.0s (or repeatedly) navigates to previous tracks from playback history.
           - **Playlist & Autoplay Preservation**: Navigating to a previous song pushes the current song back to the top of the queue (`unshift`), preserving upcoming queued tracks and keeping autoplay paused until the queue clears.
           - **Pause & Resume Controls**: Replaced the center hero button with a dynamic Play/Pause toggle. Pausing cleanly stops FFmpeg to save CPU/bandwidth and freezes elapsed time; resuming uses the clean stream recreation pipeline.
@@ -74,6 +75,6 @@ jobs:
           else
             echo "Creating new release $TAG..."
             gh release create "$TAG" "$ARCHIVE" "$META" \
-              --title "v${VERSION} - Previous Track Navigation & Pause/Resume Controls" \
+              --title "v${VERSION} - Wider Transport Layout & Controls Polishing" \
               --notes-file release_notes.md
           fi

@@ -323,7 +323,7 @@ if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
 }
 
 const panelStyle: CSSProperties = {
-  width: "min(380px, calc(100vw - 20px))",
+  width: "min(440px, calc(100vw - 20px))",
   padding: 0,
   border: "1px solid #2a2a2a",
   borderRadius: 14,
