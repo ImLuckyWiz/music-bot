@@ -1,7 +1,9 @@
 import {
   Permission,
   PluginSlot,
+  type PlainTransport,
   type PluginContext,
+  type Producer,
   type UnloadPluginContext,
 } from "@sharkord/plugin-sdk";
 import type { PlayerActionResponse, TSharkord } from "../contract";
@@ -807,31 +809,168 @@ const seekCurrentStream = async (
   const generation = ++state.streamGeneration;
   state.isSeeking = true;
 
-  // Terminate running FFmpeg process without closing producers or transports
+  // Terminate running FFmpeg process without triggering onEnd logic
   if (state.ffmpegProcess) {
     const oldProcess = state.ffmpegProcess;
     state.ffmpegProcess = null;
     await killMusicStream(oldProcess);
   }
 
-  const { ip } = ctx.voice.getListenInfo();
+  // Detach close observers from old producers so closing them won't clean up the channel
+  const oldAudioProducer = state.audioProducer;
+  const oldAudioTransport = state.audioTransport;
+  const oldVideoProducer = state.videoProducer;
+  const oldVideoTransport = state.videoTransport;
+
+  if (state.producerCloseHandler && oldAudioProducer) {
+    oldAudioProducer.observer.off("close", state.producerCloseHandler);
+    state.producerCloseHandler = null;
+  }
+
+  if (state.videoProducerCloseHandler && oldVideoProducer) {
+    oldVideoProducer.observer.off("close", state.videoProducerCloseHandler);
+    state.videoProducerCloseHandler = null;
+  }
+
+  const router = state.router ?? ctx.voice.getRouter(channelId);
+  state.router = router;
+  const { announcedAddress, ip } = ctx.voice.getListenInfo();
+
+  // Create new PlainTransport and Producer for audio.
+  // Mediasoup PlainTransport with comedia:true latches to the first RTP packet's IP/port;
+  // a new FFmpeg process binds a new ephemeral UDP source port, so we must recreate
+  // the transport and update the external stream's producers.
+  const newAudioSsrc = Math.floor(Math.random() * 1e9);
+  const newAudioTransport = await router.createPlainTransport({
+    listenIp: {
+      ip,
+      announcedIp: announcedAddress,
+    },
+    rtcpMux: true,
+    comedia: true,
+    enableSrtp: false,
+  });
+
+  const newAudioProducer = await newAudioTransport.produce({
+    kind: "audio",
+    rtpParameters: {
+      codecs: [
+        {
+          mimeType: "audio/opus",
+          payloadType: 111,
+          clockRate: 48000,
+          channels: 2,
+          parameters: {},
+          rtcpFeedback: [],
+        },
+      ],
+      encodings: [{ ssrc: newAudioSsrc }],
+    },
+  });
+
+  let newVideoTransport: PlainTransport | null = null;
+  let newVideoProducer: Producer | null = null;
+  let newVideoSsrc: number | null = null;
+
+  if (oldVideoTransport && state.activeVideoCodec) {
+    newVideoSsrc = Math.floor(Math.random() * 1e9);
+    newVideoTransport = await router.createPlainTransport({
+      listenIp: {
+        ip,
+        announcedIp: announcedAddress,
+      },
+      rtcpMux: true,
+      comedia: true,
+      enableSrtp: false,
+    });
+
+    newVideoProducer = await newVideoTransport.produce({
+      kind: "video",
+      rtpParameters: {
+        codecs: buildVideoRtpCodecs(state.activeVideoCodec),
+        encodings: [{ ssrc: newVideoSsrc }],
+      },
+    });
+  }
+
+  if (state.streamGeneration !== generation) {
+    try {
+      newAudioProducer.close();
+    } catch {}
+    try {
+      newAudioTransport.close();
+    } catch {}
+    try {
+      newVideoProducer?.close();
+    } catch {}
+    try {
+      newVideoTransport?.close();
+    } catch {}
+    return;
+  }
+
+  // Update external stream in Sharkord voice runtime;
+  // this emits VOICE_NEW_PRODUCER so clients automatically subscribe without recreating the stream tile
+  state.streamHandle?.update?.({
+    producers: {
+      audio: newAudioProducer,
+      video: newVideoProducer ?? undefined,
+    },
+  });
+
+  // Close old producers and transports
+  try {
+    oldAudioProducer?.close();
+  } catch {}
+  try {
+    oldAudioTransport?.close();
+  } catch {}
+  try {
+    oldVideoProducer?.close();
+  } catch {}
+  try {
+    oldVideoTransport?.close();
+  } catch {}
+
+  // Update state with new transports and producers
+  state.audioTransport = newAudioTransport;
+  state.audioProducer = newAudioProducer;
+  state.audioSsrc = newAudioSsrc;
+  state.videoTransport = newVideoTransport;
+  state.videoProducer = newVideoProducer;
+  state.videoSsrc = newVideoSsrc;
+
+  state.producerCloseHandler = () => cleanupChannel(ctx, channelId);
+  newAudioProducer.observer.on("close", state.producerCloseHandler);
+
+  if (newVideoProducer) {
+    state.videoProducerCloseHandler = () => cleanupChannel(ctx, channelId);
+    newVideoProducer.observer.on("close", state.videoProducerCloseHandler);
+
+    await new Promise<void>((resolve) =>
+      setTimeout(resolve, VIDEO_VIEWER_SETUP_DELAY_MS),
+    );
+
+    if (state.streamGeneration !== generation) {
+      return;
+    }
+  }
+
   const sourceUrl = state.currentSourceUrl;
   const trackInfo = state.currentTrackInfo ?? undefined;
-  const audioSsrc = state.audioSsrc ?? Math.floor(Math.random() * 1e9);
-  const videoSsrc = state.videoSsrc ?? Math.floor(Math.random() * 1e9);
 
   try {
     const result = await spawnMusicStream({
       sourceUrl,
       audioPayloadType: 111,
-      audioSsrc,
+      audioSsrc: newAudioSsrc,
       rtpHost: ip,
-      audioRtpPort: state.audioTransport.tuple.localPort,
-      ...(state.videoTransport && state.activeVideoCodec
+      audioRtpPort: newAudioTransport.tuple.localPort,
+      ...(newVideoTransport && state.activeVideoCodec && newVideoSsrc !== null
         ? {
             videoPayloadType: getVideoPayloadType(state.activeVideoCodec),
-            videoSsrc,
-            videoRtpPort: state.videoTransport.tuple.localPort,
+            videoSsrc: newVideoSsrc,
+            videoRtpPort: newVideoTransport.tuple.localPort,
           }
         : {}),
       volume: state.volume,
