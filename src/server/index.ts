@@ -658,6 +658,13 @@ const startMusicStream = async (
           return;
         }
 
+        if (state.isPaused || state.endAction === "pause") {
+          ctx.logger.debug(
+            `Ignoring onEnd because playback is paused in channel ${channelId}`,
+          );
+          return;
+        }
+
         ctx.logger.log("Music ended in channel", channelId);
 
         const queueHasItems = state.queue.length > 0;
@@ -1026,6 +1033,13 @@ const seekCurrentStream = async (
           return;
         }
 
+        if (state.isPaused || state.endAction === "pause") {
+          ctx.logger.debug(
+            `Ignoring onEnd because playback is paused in channel ${channelId}`,
+          );
+          return;
+        }
+
         ctx.logger.log("Music ended in channel", channelId);
 
         const queueHasItems = state.queue.length > 0;
@@ -1087,6 +1101,8 @@ const handlePauseMusic = async (
 
   state.isPaused = true;
   state.pausedPositionSeconds = elapsed;
+  state.endAction = "pause";
+  ++state.streamGeneration;
 
   if (state.ffmpegProcess) {
     const oldProcess = state.ffmpegProcess;
@@ -1115,6 +1131,7 @@ const handleResumeMusic = async (
   const resumeSeconds = state.pausedPositionSeconds ?? 0;
   state.isPaused = false;
   state.pausedPositionSeconds = null;
+  state.endAction = "none";
 
   await seekCurrentStream(ctx, channelId, resumeSeconds, options);
 

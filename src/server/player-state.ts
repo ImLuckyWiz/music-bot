@@ -53,7 +53,7 @@ type ChannelStreamState = {
   volume: number;
   volumeControlPort: number | null;
   queue: TQueueItem[];
-  endAction: "none" | "next" | "stop";
+  endAction: "none" | "next" | "stop" | "pause";
   autoplay: boolean;
   videoEnabled: boolean;
   lastPlayedVideoId: string | null;
