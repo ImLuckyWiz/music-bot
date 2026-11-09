@@ -56,6 +56,7 @@ jobs:
 
           cat << 'EOF' > release_notes.md
           ### Music Bot v${VERSION}
+          - **Fix Initial 2x Audio Speed Burst (WebRTC NetEQ Acceleration)**: Added FFmpeg's `arealtime` filter to the audio filter chain to pace decoded audio frames to the wall clock before packetization. This prevents FFmpeg from sending the first 32–64 KB I/O demuxer buffer as an instant RTP burst, eliminating Chromium NetEQ buffer overflow and the initial ~1 second fast-forward catch-up effect.
           - **Dynamic Autoplay Adaptation for Manual Queuing & Skips**: When you add a new song to the queue or skip to it, any stale prefetch from the previous song is immediately discarded. Autoplay now automatically pivots its radio station recommendations to base upcoming tracks on the new manually added song.
           - **Fix Track Skipping & Queue Jumping with Autoplay**: Skipping a track (`nextMusic`) or jumping to a queued track (`jumpToQueueItem`) now cleanly stops the current stream and immediately starts the next track / autoplay recommendation.
           - **Resilient Autoplay Candidate Retries**: When an autoplay recommendation cannot be resolved (e.g. YouTube age-restriction, sign-in requirement, or region block), autoplay automatically skips it and attempts the next candidates in the radio list (up to 5 retries) instead of aborting.
@@ -73,6 +74,6 @@ jobs:
           else
             echo "Creating new release $TAG..."
             gh release create "$TAG" "$ARCHIVE" "$META" \
-              --title "v${VERSION} - Dynamic Autoplay Queue Adaptation" \
+              --title "v${VERSION} - Fix Initial Audio Acceleration via arealtime" \
               --notes-file release_notes.md
           fi

@@ -382,8 +382,8 @@ const spawnMusicStream = async (
   }
 
   const audioFilter = controlPort
-    ? `volume=${volumeLevel},azmq=bind_address=tcp\\\\://127.0.0.1\\\\:${controlPort}`
-    : `volume=${volumeLevel}`;
+    ? `arealtime,volume=${volumeLevel},azmq=bind_address=tcp\\\\://127.0.0.1\\\\:${controlPort}`
+    : `arealtime,volume=${volumeLevel}`;
 
   const audioOutputArgs = [
     "-af",
