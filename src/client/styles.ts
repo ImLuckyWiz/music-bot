@@ -189,7 +189,7 @@ const CSS = `
 }
 
 .mb-transport {
-  grid-column: 2; display: flex; align-items: center; gap: 24px;
+  grid-column: 2; display: flex; align-items: center; gap: 14px;
 }
 .mb-ctrl {
   display: grid; place-items: center; padding: 4px; border: 0;

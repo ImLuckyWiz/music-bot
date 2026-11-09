@@ -20,6 +20,9 @@ type PlayerStateSnapshot = {
   autoplay: boolean;
   /** whether YouTube video is streamed, or only the audio; applies from the next track */
   videoEnabled: boolean;
+  isPaused: boolean;
+  pausedPositionSeconds: number | null;
+  hasPrevious: boolean;
 };
 
 type PlayerActionResponse = {
@@ -59,6 +62,18 @@ type TSharkord = {
     };
     seekMusic: {
       payload: { positionSeconds: number };
+      response: PlayerActionResponse;
+    };
+    pauseMusic: {
+      payload: void;
+      response: PlayerActionResponse;
+    };
+    resumeMusic: {
+      payload: void;
+      response: PlayerActionResponse;
+    };
+    previousMusic: {
+      payload: void;
       response: PlayerActionResponse;
     };
     toggleAutoplay: {

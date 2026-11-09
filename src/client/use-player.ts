@@ -16,6 +16,9 @@ const EMPTY_PLAYER_STATE: PlayerStateSnapshot = {
   queue: [],
   autoplay: false,
   videoEnabled: false,
+  isPaused: false,
+  pausedPositionSeconds: null,
+  hasPrevious: false,
 };
 
 const getErrorMessage = (error: unknown): string =>
@@ -35,20 +38,25 @@ const formatDuration = (totalSeconds: number | null): string => {
 
 const useElapsedSeconds = (player: PlayerStateSnapshot): number | null => {
   const startedAt = player.playbackStartedAtEpochMs;
-  const isPlaying = player.streamActive && startedAt !== null;
+  const isTicking =
+    player.streamActive && startedAt !== null && !player.isPaused;
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
-    if (!isPlaying) return;
+    if (!isTicking) return;
 
     setNow(Date.now());
 
     const interval = window.setInterval(() => setNow(Date.now()), 1000);
 
     return () => window.clearInterval(interval);
-  }, [isPlaying, startedAt]);
+  }, [isTicking, startedAt]);
 
-  if (!isPlaying || startedAt === null) return null;
+  if (player.isPaused && player.pausedPositionSeconds !== null) {
+    return Math.floor(player.pausedPositionSeconds);
+  }
+
+  if (!player.streamActive || startedAt === null) return null;
 
   const elapsed = Math.max(0, Math.floor((now - startedAt) / 1000));
 
@@ -64,6 +72,9 @@ const usePlayer = () => {
     play: useCanUseAction<TSharkord>("playMusic"),
     skip: useCanUseAction<TSharkord>("nextMusic"),
     stop: useCanUseAction<TSharkord>("stopMusic"),
+    pause: useCanUseAction<TSharkord>("pauseMusic"),
+    resume: useCanUseAction<TSharkord>("resumeMusic"),
+    previous: useCanUseAction<TSharkord>("previousMusic"),
     volume: useCanUseAction<TSharkord>("setVolume"),
     jump: useCanUseAction<TSharkord>("jumpToQueueItem"),
     remove: useCanUseAction<TSharkord>("removeQueueItem"),
@@ -147,6 +158,9 @@ const usePlayer = () => {
       run(() => callAction("jumpToQueueItem", { position })),
     skip: () => run(() => callAction("nextMusic")),
     stop: () => run(() => callAction("stopMusic")),
+    pause: () => run(() => callAction("pauseMusic", undefined)),
+    resume: () => run(() => callAction("resumeMusic", undefined)),
+    previous: () => run(() => callAction("previousMusic", undefined)),
     seek: (positionSeconds: number) =>
       run(() => callAction("seekMusic", { positionSeconds })),
     setVolume: (volume: number) => run(() => callAction("setVolume", { volume })),

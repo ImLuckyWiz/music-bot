@@ -57,10 +57,26 @@ const PlayIcon = ({ size = 20 }: IconProps) => (
   </Icon>
 );
 
+/** lucide: pause */
+const PauseIcon = ({ size = 20 }: IconProps) => (
+  <Icon size={size} fill="currentColor">
+    <rect x="6" y="4" width="4" height="16" rx="1" />
+    <rect x="14" y="4" width="4" height="16" rx="1" />
+  </Icon>
+);
+
 /** lucide: square */
 const StopIcon = ({ size = 18 }: IconProps) => (
   <Icon size={size} fill="currentColor">
     <rect width="18" height="18" x="3" y="3" rx="2" />
+  </Icon>
+);
+
+/** lucide: skip-back */
+const PreviousIcon = ({ size = 18 }: IconProps) => (
+  <Icon size={size} fill="currentColor">
+    <path d="M3 4v16" />
+    <path d="M17.971 4.285A2 2 0 0 1 21 6v12a2 2 0 0 1-3.029 1.715l-9.997-5.998a2 2 0 0 1-.003-3.432z" />
   </Icon>
 );
 
@@ -128,7 +144,9 @@ export {
   LoaderIcon,
   MuteIcon,
   NoteIcon,
+  PauseIcon,
   PlayIcon,
+  PreviousIcon,
   SearchIcon,
   SkipIcon,
   StopIcon,

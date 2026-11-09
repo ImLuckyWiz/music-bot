@@ -7,7 +7,9 @@ import {
   LoaderIcon,
   MuteIcon,
   NoteIcon,
+  PauseIcon,
   PlayIcon,
+  PreviousIcon,
   SearchIcon,
   SkipIcon,
   StopIcon,
@@ -30,10 +32,13 @@ const PlayerPanel = ({ controller }: PlayerPanelProps) => {
     error,
     isBusy,
     jumpTo,
+    pause,
     play,
     player,
+    previous,
     progressPercent,
     remove,
+    resume,
     seek,
     setVolume,
     skip,
@@ -344,7 +349,9 @@ const PlayerPanel = ({ controller }: PlayerPanelProps) => {
             }
           >
             {isPlaying
-              ? "Now playing"
+              ? player.isPaused
+                ? "Paused"
+                : "Now playing"
               : isLoading
                 ? "Fetching song..."
                 : "Idle"}
@@ -474,13 +481,59 @@ const PlayerPanel = ({ controller }: PlayerPanelProps) => {
         <div className="mb-transport">
           <button
             type="button"
-            className="mb-ctrl mb-ctrl-main"
-            title={isPlaying ? "Stop" : "Nothing to stop"}
-            aria-label={isPlaying ? "Stop playback" : "Nothing to stop"}
+            className="mb-ctrl"
+            title="Stop playback"
+            aria-label="Stop playback"
             disabled={isBusy || !isPlaying || !can.stop}
             onClick={stop}
           >
-            {isPlaying ? <StopIcon size={20} /> : <PlayIcon size={22} />}
+            <StopIcon size={18} />
+          </button>
+
+          <button
+            type="button"
+            className="mb-ctrl"
+            title={
+              (displayedElapsedSeconds ?? 0) > 3
+                ? "Restart track"
+                : "Previous track"
+            }
+            aria-label={
+              (displayedElapsedSeconds ?? 0) > 3
+                ? "Restart track"
+                : "Previous track"
+            }
+            disabled={isBusy || !isPlaying || !can.previous}
+            onClick={previous}
+          >
+            <PreviousIcon size={20} />
+          </button>
+
+          <button
+            type="button"
+            className="mb-ctrl mb-ctrl-main"
+            title={
+              player.isPaused
+                ? "Resume playback"
+                : isPlaying
+                  ? "Pause playback"
+                  : "Play"
+            }
+            aria-label={
+              player.isPaused
+                ? "Resume playback"
+                : isPlaying
+                  ? "Pause playback"
+                  : "Play"
+            }
+            disabled={
+              isBusy ||
+              !isPlaying ||
+              (player.isPaused ? !can.resume : !can.pause)
+            }
+            onClick={player.isPaused ? resume : pause}
+          >
+            {player.isPaused ? <PlayIcon size={22} /> : <PauseIcon size={20} />}
           </button>
 
           <button
@@ -493,7 +546,7 @@ const PlayerPanel = ({ controller }: PlayerPanelProps) => {
             }
             onClick={skip}
           >
-            <SkipIcon size={22} />
+            <SkipIcon size={20} />
           </button>
         </div>
 

@@ -56,13 +56,13 @@ jobs:
 
           cat << 'EOF' > release_notes.md
           ### Music Bot v${VERSION}
-          - **Fix Initial 2x Audio Speed Burst (WebRTC NetEQ Acceleration)**: Added FFmpeg's `arealtime` filter to the audio filter chain to pace decoded audio frames to the wall clock before packetization. This prevents FFmpeg from sending the first 32–64 KB I/O demuxer buffer as an instant RTP burst, eliminating Chromium NetEQ buffer overflow and the initial ~1 second fast-forward catch-up effect.
-          - **Dynamic Autoplay Adaptation for Manual Queuing & Skips**: When you add a new song to the queue or skip to it, any stale prefetch from the previous song is immediately discarded. Autoplay now automatically pivots its radio station recommendations to base upcoming tracks on the new manually added song.
-          - **Fix Track Skipping & Queue Jumping with Autoplay**: Skipping a track (`nextMusic`) or jumping to a queued track (`jumpToQueueItem`) now cleanly stops the current stream and immediately starts the next track / autoplay recommendation.
-          - **Resilient Autoplay Candidate Retries**: When an autoplay recommendation cannot be resolved (e.g. YouTube age-restriction, sign-in requirement, or region block), autoplay automatically skips it and attempts the next candidates in the radio list (up to 5 retries) instead of aborting.
-          - **Failed Candidate Blacklisting**: Unplayable or restricted tracks are tracked in the channel's recent history to avoid repeatedly selecting them during the same session.
-          - **Interactive Seeking & Scrubber**: Full timeline seek bar with live scrubbing support.
-          - **YouTube Music Radio Autoplay**: Queries YouTube Music radio (`RDAMVM<videoId>`) in audio-only mode for studio audio tracks.
+          - **Previous Track Navigation**: Added dedicated Previous button with standard media player behavior. Pressing it after 3.0s restarts the track from 0s; pressing within 3.0s (or repeatedly) navigates to previous tracks from playback history.
+          - **Playlist & Autoplay Preservation**: Navigating to a previous song pushes the current song back to the top of the queue (`unshift`), preserving upcoming queued tracks and keeping autoplay paused until the queue clears.
+          - **Pause & Resume Controls**: Replaced the center hero button with a dynamic Play/Pause toggle. Pausing cleanly stops FFmpeg to save CPU/bandwidth and freezes elapsed time; resuming uses the clean stream recreation pipeline.
+          - **4-Button Transport Layout**: Refined transport bar to `[Stop] [Previous] [Play/Pause] [Next]`.
+          - **Interactive Seeking & Timeline Scrubber**: Seek smoothly anywhere along the track with live scrubbing.
+          - **Fix Initial 2x Audio Speed Burst (WebRTC NetEQ Acceleration)**: Paces audio frames to wall clock before packetization.
+          - **Dynamic Autoplay Adaptation for Manual Queuing & Skips**: Pivots radio station recommendations when tracks are added or skipped.
           - **Fast InnerTube Search & Queueing**: High-speed direct InnerTube requests (~200–400ms) with studio audio preference in audio-only mode.
           - **Built for Sharkord**: Unpacks to `music-bot/` containing `manifest.json`, `client/index.js`, and `server/index.js`.
           EOF
@@ -74,6 +74,6 @@ jobs:
           else
             echo "Creating new release $TAG..."
             gh release create "$TAG" "$ARCHIVE" "$META" \
-              --title "v${VERSION} - Fix Initial Audio Acceleration via arealtime" \
+              --title "v${VERSION} - Previous Track Navigation & Pause/Resume Controls" \
               --notes-file release_notes.md
           fi

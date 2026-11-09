@@ -16,6 +16,14 @@ type TQueueItem = {
   prefetchPromise?: Promise<TYtDlpTrackInfo> | null;
 };
 
+type THistoryItem = {
+  sourceUrl: string;
+  invokerUserId: number;
+  title: string;
+  thumbnailUrl?: string | null;
+  resolvedTrack?: TYtDlpTrackInfo | null;
+};
+
 type ChannelStreamState = {
   ffmpegProcess: TMusicStreamResult["process"] | null;
   audioProducer: Producer | null;
@@ -52,6 +60,9 @@ type ChannelStreamState = {
   recentVideoIds: string[];
   prefetchedAutoplayTrack: TYtDlpTrackInfo | null;
   autoplayPrefetchPromise: Promise<TYtDlpTrackInfo | null> | null;
+  isPaused: boolean;
+  pausedPositionSeconds: number | null;
+  history: THistoryItem[];
 };
 
 const DEFAULT_VOLUME = 50;
@@ -94,6 +105,9 @@ const createInitialState = (): ChannelStreamState => ({
   recentVideoIds: [],
   prefetchedAutoplayTrack: null,
   autoplayPrefetchPromise: null,
+  isPaused: false,
+  pausedPositionSeconds: null,
+  history: [],
 });
 
 const getState = (channelId: number): ChannelStreamState => {
@@ -177,6 +191,9 @@ const emptyPlayerStateSnapshot = (): PlayerStateSnapshot => ({
   queue: [],
   autoplay: false,
   videoEnabled: false,
+  isPaused: false,
+  pausedPositionSeconds: null,
+  hasPrevious: false,
 });
 
 const getPlayerStateSnapshot = (
@@ -201,7 +218,28 @@ const getPlayerStateSnapshot = (
     queue: buildQueueEntries(state),
     autoplay: state.autoplay,
     videoEnabled: state.videoEnabled,
+    isPaused: state.isPaused,
+    pausedPositionSeconds: state.pausedPositionSeconds,
+    hasPrevious: state.history.length > 0,
   };
+};
+
+const pushToHistory = (channelId: number, item: THistoryItem): void => {
+  const state = getState(channelId);
+  state.history.push(item);
+  if (state.history.length > 50) {
+    state.history.shift();
+  }
+};
+
+const popFromHistory = (channelId: number): THistoryItem | null => {
+  const state = getState(channelId);
+  return state.history.pop() ?? null;
+};
+
+const unshiftToQueue = (channelId: number, item: TQueueItem): void => {
+  const state = getState(channelId);
+  state.queue.unshift(item);
 };
 
 const recordPlayedVideo = (channelId: number, videoId: string): void => {
@@ -231,8 +269,11 @@ export {
   getExistingState,
   getPlayerStateSnapshot,
   getState,
+  popFromHistory,
+  pushToHistory,
   recordPlayedVideo,
   removeQueueItem,
   takeNextFromQueue,
+  unshiftToQueue,
 };
-export type { ChannelStreamState, TQueueItem };
+export type { ChannelStreamState, THistoryItem, TQueueItem };

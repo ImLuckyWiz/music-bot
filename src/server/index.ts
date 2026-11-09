@@ -25,9 +25,12 @@ import {
   getExistingState,
   getPlayerStateSnapshot,
   getState,
+  popFromHistory,
+  pushToHistory,
   recordPlayedVideo,
   removeQueueItem,
   takeNextFromQueue,
+  unshiftToQueue,
 } from "./player-state";
 import { sendFfmpegVolumeCommand } from "./volume-control";
 import {
@@ -89,6 +92,19 @@ const publishPlayerState = (ctx: TCleanupContext, channelId: number): void => {
   ctx.push?.toAll({ channelId, player: getPlayerStateSnapshot(channelId) });
 };
 
+const recordCurrentTrackToHistory = (channelId: number): void => {
+  const state = getExistingState(channelId);
+  if (!state || !state.currentSourceUrl || !state.currentSong) return;
+
+  pushToHistory(channelId, {
+    sourceUrl: state.currentSourceUrl,
+    invokerUserId: state.currentInvokerUserId ?? 0,
+    title: state.currentSong,
+    thumbnailUrl: state.currentThumbnailUrl,
+    resolvedTrack: state.currentTrackInfo,
+  });
+};
+
 const cleanupChannel = (ctx: TCleanupContext, channelId: number): void => {
   const state = getExistingState(channelId);
 
@@ -148,6 +164,8 @@ const cleanupChannel = (ctx: TCleanupContext, channelId: number): void => {
   state.streamActive = false;
   state.streamStarting = false;
   state.isSeeking = false;
+  state.isPaused = false;
+  state.pausedPositionSeconds = null;
   state.currentSong = null;
   state.currentSourceUrl = null;
   state.currentTrackInfo = null;
@@ -649,6 +667,7 @@ const startMusicStream = async (
 
         const savedInvokerUserId = state.currentInvokerUserId ?? 0;
         state.endAction = "none";
+        recordCurrentTrackToHistory(channelId);
         cleanupChannel(ctx, channelId);
 
         if (shouldStartNext) {
@@ -694,6 +713,8 @@ const startMusicStream = async (
     state.currentTrackDurationSeconds = result.durationSeconds ?? null;
     state.streamActive = true;
     state.streamStarting = false;
+    state.isPaused = false;
+    state.pausedPositionSeconds = null;
     state.endAction = "none";
     state.prefetchedAutoplayTrack = null;
     state.autoplayPrefetchPromise = null;
@@ -808,6 +829,8 @@ const seekCurrentStream = async (
 
   const generation = ++state.streamGeneration;
   state.isSeeking = true;
+  state.isPaused = false;
+  state.pausedPositionSeconds = null;
 
   // Terminate running FFmpeg process without triggering onEnd logic
   if (state.ffmpegProcess) {
@@ -1012,6 +1035,7 @@ const seekCurrentStream = async (
 
         const savedInvokerUserId = state.currentInvokerUserId ?? 0;
         state.endAction = "none";
+        recordCurrentTrackToHistory(channelId);
         cleanupChannel(ctx, channelId);
 
         if (shouldStartNext) {
@@ -1042,6 +1066,123 @@ const seekCurrentStream = async (
     }
     throw err;
   }
+};
+
+const handlePauseMusic = async (
+  ctx: TMusicContext,
+  channelId: number,
+): Promise<string> => {
+  const state = getState(channelId);
+  if (!state.streamActive) {
+    throw new Error("Nothing is currently playing.");
+  }
+  if (state.isPaused) {
+    return "Playback is already paused.";
+  }
+
+  const elapsed = Math.max(
+    0,
+    (Date.now() - (state.playbackStartedAtEpochMs ?? Date.now())) / 1000,
+  );
+
+  state.isPaused = true;
+  state.pausedPositionSeconds = elapsed;
+
+  if (state.ffmpegProcess) {
+    const oldProcess = state.ffmpegProcess;
+    state.ffmpegProcess = null;
+    await killMusicStream(oldProcess);
+  }
+
+  publishPlayerState(ctx, channelId);
+
+  return "Playback paused.";
+};
+
+const handleResumeMusic = async (
+  ctx: TMusicContext,
+  channelId: number,
+  options: PlaybackSettings,
+): Promise<string> => {
+  const state = getState(channelId);
+  if (!state.streamActive) {
+    throw new Error("Nothing is currently playing.");
+  }
+  if (!state.isPaused) {
+    return "Playback is already playing.";
+  }
+
+  const resumeSeconds = state.pausedPositionSeconds ?? 0;
+  state.isPaused = false;
+  state.pausedPositionSeconds = null;
+
+  await seekCurrentStream(ctx, channelId, resumeSeconds, options);
+
+  return "Playback resumed.";
+};
+
+const handlePreviousMusic = async (
+  ctx: TMusicContext,
+  channelId: number,
+  options: PlaybackSettings,
+): Promise<string> => {
+  const state = getState(channelId);
+  if (!state.streamActive) {
+    throw new Error("Nothing is currently playing in this channel.");
+  }
+
+  const elapsedSeconds = state.isPaused
+    ? (state.pausedPositionSeconds ?? 0)
+    : Math.max(
+        0,
+        (Date.now() - (state.playbackStartedAtEpochMs ?? Date.now())) / 1000,
+      );
+
+  // Rule 1: If elapsed > 3.0s, restart the current track
+  if (elapsedSeconds > 3.0) {
+    ctx.logger.log(
+      `Previous action: restarting current track from 0s (elapsed was ${elapsedSeconds.toFixed(1)}s)`,
+    );
+    if (state.isPaused) {
+      state.isPaused = false;
+      state.pausedPositionSeconds = null;
+    }
+    await seekCurrentStream(ctx, channelId, 0, options);
+    return `Restarted ${state.currentSong ?? "current track"}.`;
+  }
+
+  // Rule 2: If elapsed <= 3.0s, check if we have history
+  const previousItem = popFromHistory(channelId);
+  if (!previousItem) {
+    ctx.logger.log("Previous action: no track in history, restarting from 0s");
+    if (state.isPaused) {
+      state.isPaused = false;
+      state.pausedPositionSeconds = null;
+    }
+    await seekCurrentStream(ctx, channelId, 0, options);
+    return `Restarted ${state.currentSong ?? "current track"}.`;
+  }
+
+  // Preserve upcoming playlist: push the current song back to the start of the queue
+  if (state.currentSourceUrl) {
+    unshiftToQueue(channelId, {
+      sourceUrl: state.currentSourceUrl,
+      invokerUserId: state.currentInvokerUserId ?? 0,
+      resolvedTrack: state.currentTrackInfo,
+    });
+  }
+
+  state.endAction = "none";
+  cleanupChannel(ctx, channelId);
+
+  return startMusicStream(
+    ctx,
+    channelId,
+    previousItem.sourceUrl,
+    options,
+    previousItem.invokerUserId,
+    previousItem.resolvedTrack ?? undefined,
+  );
 };
 
 const onLoad = async (ctx: TMusicContext) => {
@@ -1217,6 +1358,7 @@ const onLoad = async (ctx: TMusicContext) => {
       const invokerUserId = state.currentInvokerUserId ?? invoker.id;
 
       if (state.streamActive) {
+        recordCurrentTrackToHistory(channelId);
         cleanupChannel(ctx, channelId);
       }
 
@@ -1250,6 +1392,7 @@ const onLoad = async (ctx: TMusicContext) => {
       }
 
       if (state.streamActive) {
+        recordCurrentTrackToHistory(channelId);
         cleanupChannel(ctx, channelId);
       }
 
@@ -1359,12 +1502,65 @@ const onLoad = async (ctx: TMusicContext) => {
       if (state) {
         state.endAction = "stop";
         state.prefetchedAutoplayTrack = null;
+        if (state.streamActive) {
+          recordCurrentTrackToHistory(channelId);
+        }
       }
 
       // unconditional, so a half started stream is recoverable too
       cleanupChannel(ctx, channelId);
 
       return buildActionResult(ctx, "Stopped music.", channelId);
+    },
+  });
+
+  ctx.actions.register({
+    name: "pauseMusic",
+    description: "Pauses music playback in the current channel",
+    requires: Permission.JOIN_VOICE_CHANNELS,
+    executes: async (invoker) => {
+      const channelId = requireVoiceChannelId(
+        invoker.currentVoiceChannelId,
+        "You must be in a voice channel to pause music.",
+      );
+      const message = await handlePauseMusic(ctx, channelId);
+      return buildActionResult(ctx, message, channelId);
+    },
+  });
+
+  ctx.actions.register({
+    name: "resumeMusic",
+    description: "Resumes music playback in the current channel",
+    requires: Permission.JOIN_VOICE_CHANNELS,
+    executes: async (invoker) => {
+      const channelId = requireVoiceChannelId(
+        invoker.currentVoiceChannelId,
+        "You must be in a voice channel to resume music.",
+      );
+      const message = await handleResumeMusic(
+        ctx,
+        channelId,
+        getPlaybackSettings(channelId),
+      );
+      return buildActionResult(ctx, message, channelId);
+    },
+  });
+
+  ctx.actions.register({
+    name: "previousMusic",
+    description: "Restarts the track or jumps to the previous track in history",
+    requires: Permission.JOIN_VOICE_CHANNELS,
+    executes: async (invoker) => {
+      const channelId = requireVoiceChannelId(
+        invoker.currentVoiceChannelId,
+        "You must be in a voice channel to control music.",
+      );
+      const message = await handlePreviousMusic(
+        ctx,
+        channelId,
+        getPlaybackSettings(channelId),
+      );
+      return buildActionResult(ctx, message, channelId);
     },
   });
 
